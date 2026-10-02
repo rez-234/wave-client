@@ -9,6 +9,28 @@ base {
 	archivesName = project.archives_base_name
 }
 
+repositories {
+	// Only consulted for maven.modrinth artifacts, which are only requested with -Pcompat,
+	// so normal builds never contact Modrinth.
+	exclusiveContent {
+		forRepository {
+			maven {
+				name = 'Modrinth'
+				url = 'https://api.modrinth.com/maven'
+			}
+		}
+		filter {
+			includeGroup 'maven.modrinth'
+		}
+	}
+}
+
+// ./gradlew runClient -Pcompat loads Sodium, Lithium and Iris alongside the mod.
+// -Pcompat=false (or no flag) leaves them out.
+def compatRuntime = providers.gradleProperty('compat')
+		.map { it.isEmpty() || it.toBoolean() }
+		.getOrElse(false)
+
 loom {
 	mods {
 		"waveclient" {
@@ -22,6 +44,17 @@ dependencies {
 	mappings loom.officialMojangMappings()
 	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	if (compatRuntime) {
+		modLocalRuntime "maven.modrinth:sodium:${project.sodium_version}"
+		modLocalRuntime "maven.modrinth:lithium:${project.lithium_version}"
+		modLocalRuntime "maven.modrinth:iris:${project.iris_version}"
+		// transitive = false matches exactly what Iris bundles; their POMs would otherwise pull in
+		// the full ANTLR tool and old slf4j/ant versions.
+		localRuntime "org.antlr:antlr4-runtime:${project.iris_antlr4_runtime_version}"
+		localRuntime("io.github.douira:glsl-transformer:${project.iris_glsl_transformer_version}") { transitive = false }
+		localRuntime("org.anarres:jcpp:${project.iris_jcpp_version}") { transitive = false }
+	}
 
 	testImplementation platform("org.junit:junit-bom:${project.junit_version}")
 	testImplementation 'org.junit.jupiter:junit-jupiter'
@@ -49,4 +82,15 @@ java {
 
 test {
 	useJUnitPlatform()
+}
+
+// CI runs this with -Pcompat so a wrong coordinate for any dev-runtime library fails the build.
+// (Loom resolves the mod* configurations itself, but plain localRuntime libraries only at runClient.)
+tasks.register('resolveRuntimeClasspath') {
+	description = 'Resolves runtimeClasspath, including the -Pcompat libraries.'
+	def runtime = files(configurations.runtimeClasspath)
+	inputs.files(runtime)
+	doLast {
+		logger.lifecycle("runtimeClasspath resolved: ${runtime.files.size()} files")
+	}
 }

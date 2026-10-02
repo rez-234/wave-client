@@ -19,6 +19,7 @@ public final class ModuleManager {
 	private final Map<String, Module> byId = new HashMap<>();
 	private final Map<Class<?>, Module> byType = new HashMap<>();
 	private Module[] active = NONE;
+	private int activeVersion;
 	private boolean started;
 	private Runnable changeSink = () -> { };
 
@@ -113,6 +114,14 @@ public final class ModuleManager {
 		return active;
 	}
 
+	/**
+	 * Changes whenever the set of active modules changes. Lets callers cache something derived
+	 * from {@link #active()} and rebuild it only when this number moves.
+	 */
+	public int activeVersion() {
+		return activeVersion;
+	}
+
 	/** Forces off the modules the server disallows; every other module is unblocked. */
 	public void applyBlocks(Map<String, String> reasonsByModuleId) {
 		for (Module module : modules) {
@@ -139,5 +148,6 @@ public final class ModuleManager {
 		}
 
 		active = now.toArray(NONE);
+		activeVersion++;
 	}
 }

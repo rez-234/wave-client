@@ -107,13 +107,17 @@ always processed so held keys never get stuck. Binds are stored as `key:<glfw co
 
 ### HUD
 
-- One Fabric HUD layer draws all active HUD modules. Vanilla elements we replace
-  (crosshair, status effects, scoreboard) go through Fabric API's `replaceElement`.
+- One Fabric HUD layer, attached before the vanilla chat layer, draws all active HUD modules.
+  It inherits F1 hiding, draws under chat and the tab list, and hides while F3 is open
+  (client setting `hideHudWithDebug`). Vanilla elements we replace (crosshair, status effects,
+  scoreboard) go through Fabric API's `replaceElement`.
 - **Position:** one of 9 anchors, plus an offset in GUI-scaled pixels from that anchor to
   the same point on the element, plus a scale from 0.5 to 3.0. The anchor is chosen from
   where the element is dropped. Elements are clamped on screen when drawn.
-- **Text caching:** each element rebuilds its text only when its source value changes,
-  and caches the width.
+- **Text caching:** each element rebuilds its text only when its source value changes. The
+  display-ordered text and its width are cached, so drawing passes no plain Strings (which
+  would be re-processed every frame). Widths are re-measured once a second to pick up font or
+  language changes.
 
 ### HUD editor (Right Shift)
 
@@ -133,8 +137,8 @@ Inter (TTF font provider); HUD text uses the vanilla font by default.
 
 | Module | Hook |
 |---|---|
-| Fullbright | Modifies the gamma value read in `LightTexture.updateLightTexture`; never writes the option |
-| Zoom | `GameRenderer.getFov`, `MouseHandler.onScroll`, `MouseHandler.turnPlayer` |
+| Fullbright | Modifies the gamma value read in `LightTexture.updateLightTexture` (sliced from the `Options.gamma()` call); never writes the option. With setting `shaderPacks`, also answers `GameRenderer.getNightVisionScale` with 1 for the local player/camera entity, which Iris passes to shader packs |
+| Zoom | `GameRenderer.getFov` (world FOV only, not the hand; min 1 degree), `GameRenderer.bobView` (damps bobbing while zoomed), `MouseHandler.onScroll` (at `LocalPlayer.isSpectator()`), `MouseHandler.turnPlayer` (scales `accumulatedDX/DY`, reads `Options.smoothCamera`) |
 | FPS, CPS, ping, coords, direction, clock, keystrokes, armor, potions | HUD layer (CPS via `MouseHandler.onButton`) |
 | Toggle sprint / sneak | Vanilla `ToggleKeyMapping` toggle check |
 | Freelook / Snaplook | `Camera.setup`, `Entity.turn` (local player only); policy-gated |

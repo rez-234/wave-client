@@ -59,6 +59,11 @@ public class TestModule extends Module {
 	}
 
 	@Override
+	protected void resetExtra() {
+		extra = -1;
+	}
+
+	@Override
 	protected void loadExtra(JsonObject moduleJson) {
 		JsonElement value = moduleJson.get("extra");
 

@@ -23,6 +23,7 @@ cd mod
 ./gradlew build        # compiles, runs unit tests, writes build/libs/waveclient-<version>.jar
 ./gradlew test         # unit tests only
 ./gradlew runClient    # starts Minecraft 1.21.11 with the mod loaded (dev account, offline)
+./gradlew runClient -Pcompat   # same, with Sodium, Lithium and Iris loaded too
 ```
 
 On Windows use `gradlew.bat` instead of `./gradlew`.
@@ -30,6 +31,23 @@ On Windows use `gradlew.bat` instead of `./gradlew`.
 The first `runClient` downloads Minecraft and its assets, which takes a few minutes.
 The dev game directory is `mod/run/`, and the mod's config is written to
 `mod/run/config/waveclient/config.json`.
+
+## Modules
+
+| Module | Id | On by default | What it does |
+|---|---|---|---|
+| Fullbright | `fullbright` | No | Lights everything up. Your brightness option is never changed, so turning it off restores your setting. |
+| Zoom | `zoom` | Yes | Hold C to zoom 4x. Scroll while zoomed to adjust. Lowers mouse sensitivity while zoomed. Optional cinematic camera. |
+| FPS | `fps` | Yes | Frames per second in the top-left corner. |
+| Coordinates | `coordinates` | No | Your X, Y and Z position, as block coordinates or with decimals. |
+
+With an Iris shader pack active, Fullbright also reports full night vision to the pack (setting
+`shaderPacks`, on by default). Many packs, Complementary included, treat that as fullbright;
+how bright it looks still depends on the pack.
+
+Every module also has a `toggleKey` setting (unbound by default), for example
+`/wave set fullbright toggleKey b`. HUD elements are hidden while F3 is open; change that
+with `/wave set client hideHudWithDebug off`.
 
 ### In-game command
 

@@ -115,10 +115,11 @@ public abstract class Module extends SettingContainer {
 		setEnabled(!enabled);
 	}
 
-	/** Restores the default enabled state and every setting's default. */
+	/** Restores the default enabled state, every setting's default, and any extra state. */
 	public final void resetToDefaults() {
 		setEnabled(defaultEnabled);
 		resetSettings();
+		resetExtra();
 	}
 
 	/** Runs when the module becomes active. */
@@ -139,6 +140,10 @@ public abstract class Module extends SettingContainer {
 
 	/** Reads what {@link #saveExtra(JsonObject)} wrote. Must tolerate missing or malformed data. */
 	protected void loadExtra(JsonObject moduleJson) {
+	}
+
+	/** Restores whatever {@link #saveExtra(JsonObject)} writes to its default. */
+	protected void resetExtra() {
 	}
 
 	// Called by ModuleManager.

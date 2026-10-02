@@ -178,11 +178,13 @@ class ConfigManagerTest {
 		Harness h = new Harness();
 		h.config.load();
 		h.zoom.flag.set(true);
+		h.zoom.extra = 5;
 		h.config.saveNow();
 
 		Files.writeString(file(), "{ \"schemaVersion\": 1, \"modules\": {} }");
 		h.config.load();
 		assertFalse(h.zoom.flag.get());
+		assertEquals(-1, h.zoom.extra, "extra state missing from the file is reset");
 	}
 
 	@Test

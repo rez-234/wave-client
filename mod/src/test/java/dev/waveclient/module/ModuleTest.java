@@ -177,8 +177,10 @@ class ModuleTest {
 		TestModule module = new TestModule("zoom", true);
 		module.setEnabled(false);
 		module.flag.set(true);
+		module.extra = 7;
 		module.resetToDefaults();
 		assertTrue(module.isEnabled());
 		assertFalse(module.flag.get());
+		assertEquals(-1, module.extra, "extra state such as HUD positions is reset too");
 	}
 }

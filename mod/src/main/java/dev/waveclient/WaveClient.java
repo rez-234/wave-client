@@ -16,10 +16,16 @@ import org.slf4j.LoggerFactory;
 
 import dev.waveclient.command.WaveCommand;
 import dev.waveclient.config.ConfigManager;
+import dev.waveclient.hud.HudLayer;
 import dev.waveclient.input.KeybindDispatcher;
+import dev.waveclient.mixin.LightTextureAccessor;
 import dev.waveclient.module.Module;
 import dev.waveclient.module.ModuleManager;
 import dev.waveclient.module.ServerPolicy;
+import dev.waveclient.module.impl.camera.ZoomModule;
+import dev.waveclient.module.impl.hud.CoordinatesModule;
+import dev.waveclient.module.impl.hud.FpsModule;
+import dev.waveclient.module.impl.render.FullbrightModule;
 
 public final class WaveClient implements ClientModInitializer {
 	public static final String MOD_ID = "waveclient";
@@ -31,6 +37,13 @@ public final class WaveClient implements ClientModInitializer {
 	private final ClientSettings clientSettings = new ClientSettings();
 	private final KeybindDispatcher keybinds = new KeybindDispatcher();
 	private final ServerPolicy serverPolicy = ServerPolicy.defaults();
+
+	// Registration order is the order modules appear in lists and the config file.
+	private final FullbrightModule fullbright = modules.register(new FullbrightModule());
+	private final ZoomModule zoom = modules.register(new ZoomModule());
+	private final FpsModule fps = modules.register(new FpsModule());
+	private final CoordinatesModule coordinates = modules.register(new CoordinatesModule());
+
 	private ConfigManager config;
 
 	/** The running client. Only valid after Fabric has called {@link #onInitializeClient()}. */
@@ -60,6 +73,8 @@ public final class WaveClient implements ClientModInitializer {
 		ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> client.execute(() -> applyServerPolicy(client)));
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(modules::clearBlocks));
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, buildContext) -> WaveCommand.register(dispatcher, this));
+		HudLayer.register(modules, clientSettings);
+		fullbright.setLightmapInvalidator(WaveClient::invalidateLightmap);
 
 		LOGGER.info("Wave Client {} initialized with {} modules; config at {}", version(), modules.all().size(), configFile);
 	}
@@ -84,6 +99,14 @@ public final class WaveClient implements ClientModInitializer {
 		}
 	}
 
+	private static void invalidateLightmap() {
+		Minecraft client = Minecraft.getInstance();
+
+		if (client != null && client.gameRenderer != null) {
+			((LightTextureAccessor) (Object) client.gameRenderer.lightTexture()).waveclient$setUpdateLightTexture(true);
+		}
+	}
+
 	public static String version() {
 		return FabricLoader.getInstance().getModContainer(MOD_ID)
 				.map(container -> container.getMetadata().getVersion().getFriendlyString())
@@ -104,5 +127,21 @@ public final class WaveClient implements ClientModInitializer {
 
 	public ConfigManager config() {
 		return config;
+	}
+
+	public FullbrightModule fullbright() {
+		return fullbright;
+	}
+
+	public ZoomModule zoom() {
+		return zoom;
+	}
+
+	public FpsModule fps() {
+		return fps;
+	}
+
+	public CoordinatesModule coordinates() {
+		return coordinates;
 	}
 }

@@ -35,3 +35,6 @@ jobs:
         with:
           name: waveclient-mod
           path: mod/build/libs/
+      # Dev-only check that runs last, so a Modrinth outage can't cost the build artifact.
+      - name: Check compat mods resolve (Sodium, Lithium, Iris and Iris's libraries)
+        run: ./gradlew resolveRuntimeClasspath compileJava -Pcompat --console=plain
