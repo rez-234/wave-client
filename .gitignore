@@ -1,0 +1,33 @@
+# Gradle
+.gradle/
+build/
+out/
+classes/
+
+# Fabric dev runs
+run/
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+bin/
+*.launch
+
+# Node / launcher
+node_modules/
+dist/
+release/
+
+# OS / JVM
+.DS_Store
+Thumbs.db
+hs_err_*.log
+replay_*.log
+*.hprof
+*.jfr

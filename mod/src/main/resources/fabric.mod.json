@@ -1,0 +1,31 @@
+{
+	"schemaVersion": 1,
+	"id": "waveclient",
+	"version": "${version}",
+	"name": "Wave Client",
+	"description": "PvP and quality-of-life features: customizable HUD, zoom, fullbright and more. Only features allowed on major servers.",
+	"authors": [
+		"Wave Client contributors"
+	],
+	"contact": {
+		"sources": "https://github.com/rez-234/wave-client"
+	},
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"dev.waveclient.WaveClient"
+		]
+	},
+	"mixins": [
+		"waveclient.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=${loader_version}",
+		"minecraft": "~${minecraft_version}",
+		"java": ">=21",
+		"fabric-api": "*"
+	},
+	"breaks": {
+		"optifabric": "*"
+	}
+}
