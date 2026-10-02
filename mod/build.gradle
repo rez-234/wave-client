@@ -82,6 +82,10 @@ java {
 
 test {
 	useJUnitPlatform()
+	// ThemeTokensTest reads the shared design tokens, so editing them must re-run the tests.
+	inputs.file(layout.projectDirectory.file('../shared/design-tokens.json'))
+			.withPropertyName('designTokens')
+			.withPathSensitivity(PathSensitivity.NONE)
 }
 
 // CI runs this with -Pcompat so a wrong coordinate for any dev-runtime library fails the build.

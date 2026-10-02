@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - 'mod/**'
+      - 'shared/**'
       - '.github/workflows/mod.yml'
   pull_request:
     paths:
       - 'mod/**'
+      - 'shared/**'
       - '.github/workflows/mod.yml'
 
 jobs:

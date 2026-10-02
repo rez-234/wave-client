@@ -15,7 +15,8 @@ import com.google.gson.JsonObject;
 public final class HudPosition {
 	public static final double MIN_SCALE = 0.5;
 	public static final double MAX_SCALE = 3.0;
-	private static final double SCALE_STEP = 0.05;
+	/** Scales are stored in steps of this size. */
+	public static final double SCALE_STEP = 0.05;
 
 	private final Anchor defaultAnchor;
 	private final double defaultX;
@@ -116,6 +117,16 @@ public final class HudPosition {
 	/** Top edge of the element in GUI pixels, kept on screen. */
 	public double top(double screenHeight, double elementHeight) {
 		return place(anchor.fy, offsetY, screenHeight, elementHeight * scale);
+	}
+
+	/** {@link #left} rounded to a whole GUI pixel, which is where the element is actually drawn. */
+	public int pixelLeft(double screenWidth, double elementWidth) {
+		return (int) Math.round(left(screenWidth, elementWidth));
+	}
+
+	/** {@link #top} rounded to a whole GUI pixel, which is where the element is actually drawn. */
+	public int pixelTop(double screenHeight, double elementHeight) {
+		return (int) Math.round(top(screenHeight, elementHeight));
 	}
 
 	/**

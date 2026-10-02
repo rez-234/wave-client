@@ -14,6 +14,7 @@ import org.joml.Matrix3x2fStack;
 
 import dev.waveclient.ClientSettings;
 import dev.waveclient.WaveClient;
+import dev.waveclient.gui.screen.HudEditorScreen;
 import dev.waveclient.module.Module;
 import dev.waveclient.module.ModuleManager;
 
@@ -44,45 +45,54 @@ public final class HudLayer implements HudElement {
 
 	@Override
 	public void render(GuiGraphics graphics, DeltaTracker deltaTracker) {
-		if (settings.hideHudWithDebug.get() && Minecraft.getInstance().debugEntries.isOverlayVisible()) {
+		Minecraft minecraft = Minecraft.getInstance();
+
+		// The editor draws the elements itself, with outlines and handles.
+		if (minecraft.screen instanceof HudEditorScreen) {
+			return;
+		}
+
+		if (settings.hideHudWithDebug.get() && minecraft.debugEntries.isOverlayVisible()) {
 			return;
 		}
 
 		HudModule[] elements = refresh();
 		int screenWidth = graphics.guiWidth();
 		int screenHeight = graphics.guiHeight();
-		Matrix3x2fStack pose = graphics.pose();
 
 		for (HudModule element : elements) {
 			int width = element.width();
 			int height = element.height();
 
-			if (width <= 0 || height <= 0) {
-				continue;
+			if (width > 0 && height > 0) {
+				draw(graphics, element, element.position.pixelLeft(screenWidth, width), element.position.pixelTop(screenHeight, height));
+			}
+		}
+	}
+
+	/**
+	 * Draws one element with its top-left corner at the given GUI pixel, applying its scale.
+	 * Whole-pixel positions keep text crisp. An element that throws is disabled instead of
+	 * crashing the game.
+	 */
+	public static void draw(GuiGraphics graphics, HudModule element, int left, int top) {
+		Matrix3x2fStack pose = graphics.pose();
+		float scale = (float) element.position.scale();
+		pose.pushMatrix();
+
+		try {
+			pose.translate(left, top);
+
+			if (scale != 1.0F) {
+				pose.scale(scale, scale);
 			}
 
-			HudPosition position = element.position;
-			float scale = (float) position.scale();
-			// Whole GUI pixels keep text crisp.
-			float left = Math.round(position.left(screenWidth, width));
-			float top = Math.round(position.top(screenHeight, height));
-
-			pose.pushMatrix();
-
-			try {
-				pose.translate(left, top);
-
-				if (scale != 1.0F) {
-					pose.scale(scale, scale);
-				}
-
-				element.render(graphics);
-			} catch (RuntimeException e) {
-				WaveClient.LOGGER.error("HUD element '{}' failed to render; disabling it", element.id(), e);
-				element.setEnabled(false);
-			} finally {
-				pose.popMatrix();
-			}
+			element.render(graphics);
+		} catch (RuntimeException e) {
+			WaveClient.LOGGER.error("HUD element '{}' failed to render; disabling it", element.id(), e);
+			element.setEnabled(false);
+		} finally {
+			pose.popMatrix();
 		}
 	}
 

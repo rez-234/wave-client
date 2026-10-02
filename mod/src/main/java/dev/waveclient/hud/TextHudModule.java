@@ -94,6 +94,11 @@ public abstract class TextHudModule extends HudModule {
 	}
 
 	@Override
+	public void prepareForEditor() {
+		updateText(true);
+	}
+
+	@Override
 	protected void onTick() {
 		boolean force = stale;
 		stale = false;

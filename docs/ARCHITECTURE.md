@@ -121,10 +121,19 @@ always processed so held keys never get stuck. Binds are stored as `key:<glfw co
 
 ### HUD editor (Right Shift)
 
-Drag to move, use the corner handle or scroll to scale, right-click for settings, arrow keys
-to nudge. Elements snap within 4px to screen edges, the screen's center lines, and other
-elements' edges and centers, with guide lines drawn; hold Alt to disable snapping. There
-are buttons for "Mods" and "Reset layout".
+Drag to move, use the corner handle or scroll to scale, arrow keys to nudge (Shift: 10px), R to
+reset the selected element. Elements snap within 4px to screen edges, the screen's center lines,
+and other elements' edges and centers, with guide lines drawn; hold Alt to disable snapping.
+Buttons: "Reset all" and "Done". Step 4 adds a "Mods" button and right-click for an element's
+settings.
+
+The behaviour lives in `HudEditController`, `SnapEngine` and `ToggleKeyGesture`, which use no
+Minecraft types and are unit tested; `HudEditorScreen` forwards input to them and draws. Edited
+positions are stored on whole GUI pixels, so saving and reloading never moves an element. The editor opens on the tick after
+the key press. Inside the editor the key closes it on release, and only for a press made in the
+editor with nothing else pressed meanwhile, so neither key auto-repeat nor Right Shift + arrow
+(the 10px nudge) closes it by accident. A click never moves anything: drags start after 2px.
+Only active elements are shown, so a module blocked by the server stays hidden.
 
 ### Mod menu
 

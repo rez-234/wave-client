@@ -14,7 +14,7 @@ import dev.waveclient.module.Module;
  * underlying value changes, typically in {@link #onTick()}, and keep {@link #render} to drawing
  * cached data.
  */
-public abstract class HudModule extends Module {
+public abstract class HudModule extends Module implements HudEditController.Element {
 	public final HudPosition position;
 
 	// The position's change sink captures 'this', but only runs on later edits, never during construction.
@@ -25,11 +25,31 @@ public abstract class HudModule extends Module {
 		this.position.setChangeSink(this::markDirty);
 	}
 
+	@Override
+	public HudPosition position() {
+		return position;
+	}
+
 	/** Unscaled width in GUI pixels. */
+	@Override
 	public abstract int width();
 
 	/** Unscaled height in GUI pixels. */
+	@Override
 	public abstract int height();
+
+	/** Only active elements are edited: a module blocked by the server or disabled after an error is hidden. */
+	@Override
+	public boolean isEditable() {
+		return isActive();
+	}
+
+	/**
+	 * Called when the HUD editor opens, so the element shows current content even if it hasn't
+	 * ticked yet (for example because it was only just enabled).
+	 */
+	public void prepareForEditor() {
+	}
 
 	/**
 	 * Draws the element with its top-left corner at (0, 0); the HUD layer has already translated

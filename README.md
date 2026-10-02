@@ -45,6 +45,21 @@ With an Iris shader pack active, Fullbright also reports full night vision to th
 `shaderPacks`, on by default). Many packs, Complementary included, treat that as fullbright;
 how bright it looks still depends on the pack.
 
+### HUD editor
+
+Press **Right Shift** in a world to open the HUD editor (change the key with
+`/wave set client hudEditorKey <key>`):
+
+- Drag an element to move it. It snaps to the screen edges, the screen's center lines and other
+  elements; hold **Alt** to place it freely.
+- Drag the small square in an element's bottom-right corner, or scroll over it, to resize it.
+- Click an element, then use the **arrow keys** to nudge it by 1 pixel (Shift: 10). **R** resets it.
+- **Reset all** puts every element shown in the editor back to its default position and size.
+- **Esc**, **Done** or a tap of **Right Shift** closes the editor; positions are saved immediately.
+
+Positions are stored relative to the nearest screen corner, edge or center, so elements stay put
+when you resize the window or change the GUI scale.
+
 Every module also has a `toggleKey` setting (unbound by default), for example
 `/wave set fullbright toggleKey b`. HUD elements are hidden while F3 is open; change that
 with `/wave set client hideHudWithDebug off`.

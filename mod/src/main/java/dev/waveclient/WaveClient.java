@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import dev.waveclient.command.WaveCommand;
 import dev.waveclient.config.ConfigManager;
+import dev.waveclient.gui.screen.HudEditorScreen;
 import dev.waveclient.hud.HudLayer;
 import dev.waveclient.input.KeybindDispatcher;
 import dev.waveclient.mixin.LightTextureAccessor;
@@ -45,6 +46,7 @@ public final class WaveClient implements ClientModInitializer {
 	private final CoordinatesModule coordinates = modules.register(new CoordinatesModule());
 
 	private ConfigManager config;
+	private boolean hudEditorRequested;
 
 	/** The running client. Only valid after Fabric has called {@link #onInitializeClient()}. */
 	public static WaveClient get() {
@@ -55,6 +57,9 @@ public final class WaveClient implements ClientModInitializer {
 	public void onInitializeClient() {
 		instance = this;
 
+		// Opened on the next tick rather than inside the key event. The editor itself ignores the
+		// opening press's auto-repeats and release, and closes only on a fresh press-and-release.
+		clientSettings.hudEditorKey.onPress(() -> hudEditorRequested = true);
 		keybinds.registerAll(clientSettings);
 
 		for (Module module : modules.all()) {
@@ -87,6 +92,14 @@ public final class WaveClient implements ClientModInitializer {
 
 		modules.tick();
 		config.tick();
+
+		if (hudEditorRequested) {
+			hudEditorRequested = false;
+
+			if (client.screen == null && client.level != null && client.player != null) {
+				client.setScreen(new HudEditorScreen(this));
+			}
+		}
 	}
 
 	private void applyServerPolicy(Minecraft client) {

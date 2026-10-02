@@ -1,0 +1,22 @@
+{
+  "$comment": "Single source of truth for Wave Client's look, shared by the launcher and the mod. The mod's Theme.java mirrors the colors; ThemeTokensTest fails if they drift.",
+  "color": {
+    "background": "#0F1012",
+    "surface": "#17181B",
+    "surfaceRaised": "#1F2024",
+    "border": "#2A2B30",
+    "text": "#E6E6E8",
+    "textMuted": "#9A9BA1",
+    "accent": "#5B8CFF",
+    "danger": "#E5484D"
+  },
+  "font": {
+    "ui": "Inter",
+    "mono": "JetBrains Mono"
+  },
+  "space": [4, 8, 12, 16, 24, 32],
+  "radius": {
+    "small": 4,
+    "medium": 6
+  }
+}
