@@ -57,22 +57,22 @@ public final class ColorWidget extends Widget {
 			return false;
 		}
 
-		open();
+		open(false);
 		return true;
 	}
 
 	@Override
 	public boolean keyPressed(KeyEvent event) {
 		if (event.isSelection()) {
-			open();
+			open(true);
 			return true;
 		}
 
 		return false;
 	}
 
-	private void open() {
-		host.openPopover(new ColorPickerPopover(setting), this);
+	private void open(boolean fromKeyboard) {
+		host.openPopover(new ColorPickerPopover(setting, fromKeyboard), this);
 	}
 
 	@Override

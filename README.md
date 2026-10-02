@@ -57,10 +57,15 @@ a key to it under **Settings**.
 - Click a card's switch to turn a module on or off, or the card itself to open its settings.
 - Every setting has its control on the right. The **↺** button beside a changed setting restores
   its default. **Reset to defaults** (click twice) resets the whole module.
+- In the color picker, drag in the square and bars or type a hex code: `#RRGGBB`, or
+  `#AARRGGBB` for colors with transparency.
 - Click a key binding, then press a key or a mouse button (middle or side) to change it. Escape
   cancels and Backspace clears it. Bindings shared with another Wave Client key turn red.
-- **Esc** closes the menu, or first the open color picker or dropdown, or clears the search.
-  Mouse button 4 or Backspace goes back from a settings page.
+- **Tab** and **Shift+Tab** move between controls; **Space** or **Enter** uses the focused one,
+  and the arrow keys adjust sliders and dropdowns.
+- **Esc** closes an open color picker or dropdown, cancels a key binding you're changing,
+  clears the search box while you're typing in it, and otherwise closes the menu. Mouse button 4,
+  or Backspace when no control is focused, goes back from a settings page.
 
 The menu uses Inter, like the launcher. Change it to the Minecraft font under **Settings**
 if you prefer. At GUI scale 1 the Minecraft font is always used.

@@ -1,7 +1,9 @@
 package dev.waveclient.gui.menu;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 import dev.waveclient.gui.render.Painter;
@@ -33,6 +35,7 @@ final class ModuleListPage extends MenuPage {
 	private final Text count = new Text(UiFont.BODY);
 	private final Text empty = new Text(UiFont.BODY);
 	private final List<Heading> headings = new ArrayList<>();
+	private final Map<Module, ModuleCard> cards = new IdentityHashMap<>();
 	private double titleCenterY;
 	private double emptyY = Double.NaN;
 
@@ -124,7 +127,8 @@ final class ModuleListPage extends MenuPage {
 			ModuleSearch.Hit hit = hits.get(i);
 			int column = i % columns;
 			int row = i / columns;
-			ModuleCard card = new ModuleCard(hit.module(), hit.setting(), () -> open.accept(hit.module()));
+			// Reused across layouts (window resizes), so a focused card keeps focus.
+			ModuleCard card = cards.computeIfAbsent(hit.module(), module -> new ModuleCard(module, hit.setting(), () -> open.accept(module)));
 			card.setBounds(left + PADDING + column * (cardWidth + GAP), y + row * (ModuleCard.HEIGHT + GAP), cardWidth, ModuleCard.HEIGHT);
 			widgets.add(card);
 		}

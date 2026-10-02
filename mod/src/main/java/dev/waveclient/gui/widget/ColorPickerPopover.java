@@ -32,12 +32,21 @@ public final class ColorPickerPopover extends Popover {
 	private final TextField hex;
 	private Drag drag = Drag.NONE;
 
-	public ColorPickerPopover(ColorSetting setting) {
+	/**
+	 * @param focusHex start with the hex field focused and selected, so a picker opened from the
+	 *                 keyboard can be used without a mouse
+	 */
+	public ColorPickerPopover(ColorSetting setting, boolean focusHex) {
 		this.model = new ColorPickerModel(setting);
 		this.alpha = setting.allowsAlpha();
 		this.hex = new TextField(new TextFieldModel(9).filter(s -> s.matches("#?[0-9a-fA-F]*")), alpha ? "#AARRGGBB" : "#RRGGBB");
-		hex.onChange(this::applyHex).onEnter(() -> hex.setFocused(false));
+		hex.onChange(value -> applyHex(value, false)).onEnter(this::commitHex);
 		hex.setValue(format(setting));
+
+		if (focusHex) {
+			hex.setFocused(true);
+			hex.model().selectAll();
+		}
 	}
 
 	/** {@code #RRGGBB} when fully opaque, {@code #AARRGGBB} otherwise. */
@@ -48,11 +57,31 @@ public final class ColorPickerPopover extends Popover {
 				: ColorSetting.toHex(argb);
 	}
 
-	private void applyHex(String value) {
+	/**
+	 * Applies typed hex. Eight digits always apply at once. Six digits apply at once for opaque
+	 * colors; for colors with alpha they apply (keeping the current alpha) only when committed,
+	 * because they are usually the first six of eight being typed.
+	 */
+	private void applyHex(String value, boolean committing) {
 		String digits = value.startsWith("#") ? value.substring(1) : value;
+		long parsed = ColorSetting.parseHex(value);
 
-		if (digits.length() == 6 || digits.length() == 8) {
-			model.setting().parse(value);
+		if (parsed < 0) {
+			return;
+		}
+
+		if (digits.length() == 8) {
+			model.setting().set((int) parsed);
+		} else if (!alpha || committing) {
+			model.setting().set((model.setting().get() & 0xFF000000) | ((int) parsed & 0x00FFFFFF));
+		}
+	}
+
+	/** Enter, or the field losing focus: apply what was typed and leave the field. */
+	private void commitHex() {
+		if (hex.isFocused()) {
+			applyHex(hex.value(), true);
+			hex.setFocused(false);
 		}
 	}
 
@@ -146,7 +175,7 @@ public final class ColorPickerPopover extends Popover {
 			return true;
 		}
 
-		hex.setFocused(false);
+		commitHex();
 
 		if (inside(mouseX, mouseY, squareX(), SQUARE_WIDTH)) {
 			drag = Drag.SQUARE;
@@ -214,7 +243,7 @@ public final class ColorPickerPopover extends Popover {
 
 	@Override
 	public void onClosed() {
-		hex.setFocused(false);
+		commitHex();
 	}
 
 	private static double clamp01(double v) {

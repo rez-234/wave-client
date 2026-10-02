@@ -113,11 +113,7 @@ public final class KeybindWidget extends Widget {
 			return true;
 		}
 
-		if (event.key() == KeyCapture.GLFW_KEY_BACKSPACE || event.key() == KeyCapture.GLFW_KEY_DELETE) {
-			setting.set(Keybind.NONE);
-			return true;
-		}
-
+		// Backspace is left to the screen (it goes back); clearing is done while listening.
 		return false;
 	}
 

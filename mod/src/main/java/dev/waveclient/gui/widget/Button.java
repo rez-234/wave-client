@@ -1,6 +1,7 @@
 package dev.waveclient.gui.widget;
 
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 import com.mojang.blaze3d.platform.cursor.CursorType;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
@@ -32,7 +33,7 @@ public final class Button extends Widget {
 	private final Kind kind;
 	private final Runnable action;
 	private BooleanSupplier usable = () -> true;
-	private String tooltip;
+	private Supplier<String> tooltip = () -> null;
 
 	public Button(String label, Kind kind, Runnable action) {
 		this.label = new Text(UiFont.STRONG, label);
@@ -47,6 +48,12 @@ public final class Button extends Widget {
 	}
 
 	public Button tooltip(String tooltip) {
+		this.tooltip = () -> tooltip;
+		return this;
+	}
+
+	/** A tooltip that can change, e.g. to explain why the button is disabled right now. */
+	public Button tooltip(Supplier<String> tooltip) {
 		this.tooltip = tooltip;
 		return this;
 	}
@@ -95,10 +102,11 @@ public final class Button extends Widget {
 			painter.outline(x - 1, y - 1, width + 2, height + 2, ColorMath.withAlpha(Theme.ACCENT, 0xA0));
 		}
 
-		// Icon-sized buttons (a single glyph such as the close button's "×") skip the padding.
+		// Icon buttons (a single glyph such as the close button's "×") skip the padding.
 		int maxWidth = Math.max(0, width - 2 * PADDING);
+		String value = label.value();
 
-		if (label.width(painter) > maxWidth && label.width(painter) <= width) {
+		if (value.codePointCount(0, value.length()) == 1) {
 			maxWidth = width;
 		}
 
@@ -126,9 +134,10 @@ public final class Button extends Widget {
 		return false;
 	}
 
+	/** Unusable buttons are skipped by Tab, since they couldn't show focus or act on it. */
 	@Override
 	public boolean isFocusable() {
-		return true;
+		return usable.getAsBoolean();
 	}
 
 	@Override
@@ -138,6 +147,6 @@ public final class Button extends Widget {
 
 	@Override
 	public String tooltip(double mouseX, double mouseY) {
-		return tooltip;
+		return tooltip.get();
 	}
 }

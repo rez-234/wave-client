@@ -50,6 +50,12 @@ final class ModuleCard extends Widget {
 	public void render(Painter painter, boolean hovered, double mouseX, double mouseY, float seconds) {
 		animateHover(hovered && !toggle.contains(mouseX, mouseY), seconds);
 		int border = module.isEnabled() && !module.isBlocked() ? Theme.mix(Theme.BORDER, Theme.ACCENT, 0.4f) : Theme.BORDER;
+
+		// The focus ring goes underneath, so the card's own content stays on top of it.
+		if (showsFocus(painter)) {
+			painter.roundRect(x - 1.5, y - 1.5, width + 3, height + 3, Theme.RADIUS_MEDIUM + 1, Theme.withAlpha(Theme.ACCENT, 0xA0));
+		}
+
 		painter.roundRect(x, y, width, height, Theme.RADIUS_MEDIUM, Theme.mix(Theme.SURFACE, Theme.SURFACE_HOVER, hover), border);
 
 		name.drawFitted(painter, x + PADDING, y + 15.5, Math.max(0, width - 2 * PADDING - SwitchWidget.WIDTH - 8), Theme.TEXT);
@@ -65,11 +71,6 @@ final class ModuleCard extends Widget {
 		} else {
 			detail.set(module.description());
 			detailColor = Theme.TEXT_MUTED;
-		}
-
-		if (showsFocus(painter)) {
-			painter.roundRect(x - 1.5, y - 1.5, width + 3, height + 3, Theme.RADIUS_MEDIUM + 1, Theme.withAlpha(Theme.ACCENT, 0xA0));
-			painter.roundRect(x, y, width, height, Theme.RADIUS_MEDIUM, Theme.mix(Theme.SURFACE, Theme.SURFACE_HOVER, hover), border);
 		}
 
 		descriptionCut = detailColor == Theme.TEXT_MUTED && detail.isCut(painter, detailWidth);

@@ -61,8 +61,12 @@ public final class DropdownPopover extends Popover {
 
 	@Override
 	public void render(Painter painter, double mouseX, double mouseY, float seconds) {
-		// The pointer only takes over the highlight when it moves, so arrow keys aren't overridden.
-		if (mouseX != lastMouseX || mouseY != lastMouseY) {
+		// The pointer only takes over the highlight when it moves, so arrow keys aren't overridden
+		// and a list opened from the keyboard starts on the current choice wherever the pointer is.
+		if (Double.isNaN(lastMouseX)) {
+			lastMouseX = mouseX;
+			lastMouseY = mouseY;
+		} else if (mouseX != lastMouseX || mouseY != lastMouseY) {
 			lastMouseX = mouseX;
 			lastMouseY = mouseY;
 			int row = rowAt(mouseX, mouseY);

@@ -96,7 +96,7 @@ public final class SwitchWidget extends Widget {
 
 	@Override
 	public boolean isFocusable() {
-		return true;
+		return usable.getAsBoolean();
 	}
 
 	@Override

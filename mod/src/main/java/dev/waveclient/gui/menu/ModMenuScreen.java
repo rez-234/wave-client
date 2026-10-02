@@ -129,14 +129,12 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 		this.search = new TextField(new TextFieldModel(64), "Search modules");
 		this.search.onChange(query -> showList());
 		this.close = new Button("×", Button.Kind.GHOST, this::onClose).tooltip("Close (Esc)");
-		this.editHud = new Button("Edit HUD layout", Button.Kind.SECONDARY, this::openHudEditor).usableWhen(this::canEditHud);
+		this.editHud = new Button("Edit HUD layout", Button.Kind.SECONDARY, this::openHudEditor).usableWhen(this::canEditHud)
+				.tooltip(() -> canEditHud() ? null : "Join a world to move HUD elements.");
 
 		if (module != null) {
 			STATE.setOpenModule(module.id());
-
-			if (STATE.section() instanceof MenuState.ClientSettings) {
-				STATE.setSection(new MenuState.OfCategory(module.category()));
-			}
+			selectSectionOf(module);
 		}
 
 		sidebar.add(new SidebarItem("All modules", () -> STATE.section() instanceof MenuState.All && !searching(), () -> selectSection(MenuState.ALL)));
@@ -220,23 +218,37 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 		int searchWidth = Math.max(100, Math.min(190, (int) (panelWidth * 0.32)));
 		search.setBounds(close.x() - 6 - searchWidth, centerY - TextField.HEIGHT / 2.0, searchWidth, TextField.HEIGHT);
 
-		double itemY = contentY + 8;
+		// Items shrink (and the gap above "Settings" goes) when the panel is too short for them;
+		// the HUD editor shortcut at the bottom is dropped first.
+		int editHudY = panelY + panelHeight - 8 - Button.HEIGHT;
+		int count = sidebar.size();
+		int itemHeight = SIDEBAR_ITEM_HEIGHT;
+		int settingsGap = 9;
+		double fullHeight = count * (SIDEBAR_ITEM_HEIGHT + 2) + settingsGap;
+		boolean editHudFits = contentY + 8 + fullHeight + 4 <= editHudY;
 
-		for (int i = 0; i < sidebar.size(); i++) {
-			// A gap above "Settings", the last item, to set it apart from the categories.
-			if (i == sidebar.size() - 1) {
-				itemY += 9;
+		if (!editHudFits) {
+			double room = panelY + panelHeight - 6 - (contentY + 8);
+
+			if (fullHeight > room) {
+				settingsGap = 2;
+				itemHeight = Math.max(12, (int) Math.floor((room - settingsGap) / count) - 2);
 			}
-
-			sidebar.get(i).setBounds(panelX + 6, itemY, sidebarWidth - 12, SIDEBAR_ITEM_HEIGHT);
-			itemY += SIDEBAR_ITEM_HEIGHT + 2;
 		}
 
-		// The HUD editor shortcut sits at the bottom of the sidebar, if the categories leave room.
-		int editHudY = panelY + panelHeight - 8 - Button.HEIGHT;
-		boolean editHudFits = itemY + 4 <= editHudY;
+		double itemY = contentY + 8;
+
+		for (int i = 0; i < count; i++) {
+			// A gap above "Settings", the last item, to set it apart from the categories.
+			if (i == count - 1) {
+				itemY += settingsGap;
+			}
+
+			sidebar.get(i).setBounds(panelX + 6, itemY, sidebarWidth - 12, itemHeight);
+			itemY += itemHeight + 2;
+		}
+
 		editHud.setBounds(panelX + 6, editHudY, editHudFits ? sidebarWidth - 12 : 0, editHudFits ? Button.HEIGHT : 0);
-		editHud.tooltip(canEditHud() ? null : "Join a world to move HUD elements.");
 
 		if (page == null) {
 			page = initialPage();
@@ -266,7 +278,8 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 		scroll.jumpTo(scrollTo);
 		layoutGeneration = painter.generation();
 
-		if (focused != null && focused != search && !page.widgets().contains(focused)) {
+		// Header and sidebar widgets outlive the page; only the old page's widgets lose focus.
+		if (focused != null && !chrome.contains(focused) && !page.widgets().contains(focused)) {
 			setFocus(null);
 		}
 
@@ -336,12 +349,18 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 
 	/** Shows {@code module}'s settings; used when the HUD editor returns here on a right-click. */
 	public void showModule(Module module) {
-		if (STATE.section() instanceof MenuState.ClientSettings) {
-			STATE.setSection(new MenuState.OfCategory(module.category()));
-		}
-
+		selectSectionOf(module);
 		search.setValue("");
 		openModule(module);
+	}
+
+	/** Makes the sidebar agree with a module opened from outside the list (the HUD editor). */
+	private static void selectSectionOf(Module module) {
+		MenuState.Section own = new MenuState.OfCategory(module.category());
+
+		if (!(STATE.section() instanceof MenuState.All) && !own.equals(STATE.section())) {
+			STATE.setSection(own);
+		}
 	}
 
 	private void openModule(Module module) {
@@ -508,7 +527,7 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 
 		float target = (float) selected.y();
 		sidebarIndicator = Float.isNaN(sidebarIndicator) ? target : Anim.approach(sidebarIndicator, target, seconds, 20);
-		painter.pill(selected.x() + 1, sidebarIndicator + 5, 2, SIDEBAR_ITEM_HEIGHT - 10, Theme.ACCENT);
+		painter.pill(selected.x() + 1, sidebarIndicator + selected.height() / 4.0, 2, selected.height() / 2.0, Theme.ACCENT);
 	}
 
 	private double trackX() {
@@ -827,7 +846,9 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 		}
 
 		if (focused != null && focused.keyPressed(event)) {
-			if (listening != isListening(focused) || popover != null) {
+			// Activating something with Enter or Space (outside text fields) counts too: holding
+			// the key must not activate it again, e.g. confirming "Reset to defaults".
+			if ((event.isSelection() && !typing) || listening != isListening(focused) || popover != null) {
 				swallow(key);
 			}
 
@@ -860,20 +881,17 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 	/** Tab and Shift+Tab: search, sidebar, page controls, close. Scrolls the new focus into view. */
 	private void cycleFocus(boolean forward) {
 		List<Widget> order = new ArrayList<>();
-
-		for (Widget widget : chrome) {
-			if (widget != close && widget.isFocusable() && widget.width() > 0) {
-				order.add(widget);
-			}
-		}
-
-		for (Widget widget : page.widgets()) {
-			if (widget.isFocusable()) {
-				order.add(widget);
-			}
-		}
-
+		order.add(search);
+		order.addAll(sidebar);
+		order.add(editHud);
+		order.addAll(page.widgets());
 		order.add(close);
+		order.removeIf(widget -> !widget.isFocusable() || widget.width() <= 0);
+
+		if (order.isEmpty()) {
+			return;
+		}
+
 		int index = order.indexOf(focused);
 		int next = index < 0 ? (forward ? 0 : order.size() - 1) : Math.floorMod(index + (forward ? 1 : -1), order.size());
 		Widget target = order.get(next);
@@ -941,6 +959,14 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 	public void removed() {
 		closePopover();
 		setFocus(null);
+		// The screen may be shown again (back from the HUD editor), so drop input that was in
+		// flight when it was replaced; its release went to the other screen.
+		pressed = null;
+		pressedPopover = false;
+		draggingScrollbar = false;
+		scroll.endThumbDrag();
+		swallowedKey = -1;
+		swallowChars = false;
 
 		if (page != null) {
 			STATE.setScroll(page.key(), scroll.target());

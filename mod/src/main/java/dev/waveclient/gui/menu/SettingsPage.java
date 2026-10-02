@@ -22,6 +22,7 @@ import dev.waveclient.gui.widget.KeybindWidget;
 import dev.waveclient.gui.widget.PopoverHost;
 import dev.waveclient.gui.widget.SliderWidget;
 import dev.waveclient.gui.widget.SwitchWidget;
+import dev.waveclient.gui.widget.TwoStepConfirm;
 import dev.waveclient.gui.widget.Widget;
 import dev.waveclient.hud.HudModule;
 import dev.waveclient.module.Module;
@@ -45,6 +46,9 @@ final class SettingsPage extends MenuPage {
 	private static final int FIRST_LINE = 16;
 	private static final int RESET_SIZE = 14;
 	private static final long CONFIRM_MS = 3000;
+	/** A second activation sooner than this is a double-click or key repeat, not a confirmation. */
+	private static final long MIN_CONFIRM_MS = 300;
+	private final TwoStepConfirm resetConfirm = new TwoStepConfirm(CONFIRM_MS, MIN_CONFIRM_MS);
 
 	/** What a page shows: a module, or another group of settings such as the client's own. */
 	record Subject(String key, String title, String description, SettingContainer settings, Module module) {
@@ -86,7 +90,6 @@ final class SettingsPage extends MenuPage {
 	private double titleCenterY;
 	private double descriptionTop;
 	private Button resetButton;
-	private long resetArmedAt = Long.MIN_VALUE;
 
 	SettingsPage(Subject subject, PopoverHost host, Function<KeybindSetting, String> conflicts, Actions actions) {
 		this.subject = subject;
@@ -177,10 +180,16 @@ final class SettingsPage extends MenuPage {
 		descriptionTop = y;
 		y += description.lines(painter, contentWidth).size() * LINE + 12;
 
-		int controlWidth = Math.max(110, Math.min(160, (int) (contentWidth * 0.42)));
-		double labelWidth = Math.max(40, contentWidth - controlWidth - RESET_SIZE - 12);
+		int controlWidth = Math.max(90, Math.min(160, (int) (contentWidth * 0.42)));
 
 		for (Setting<?> setting : shown) {
+			// The label gets everything left of the control and its reset button, so a narrow
+			// switch leaves more room for the name than a wide slider does.
+			int width = setting instanceof BooleanSetting ? SwitchWidget.WIDTH : controlWidth;
+			double controlLeft = x + contentWidth - width;
+			double resetLeft = controlLeft - RESET_SIZE - 4;
+			double labelWidth = Math.max(30, resetLeft - 6 - x);
+
 			Text[] text = texts.computeIfAbsent(setting, s -> new Text[] {new Text(UiFont.BODY, s.name()), new Text(UiFont.BODY, s.description())});
 			Text label = text[0];
 			Text help = text[1];
@@ -191,13 +200,11 @@ final class SettingsPage extends MenuPage {
 			double centerY = y + ROW_PADDING + FIRST_LINE / 2.0;
 			Widget control = controls.computeIfAbsent(setting, this::control);
 			int controlHeight = control.height();
-			double controlLeft = setting instanceof BooleanSetting ? x + contentWidth - SwitchWidget.WIDTH : x + contentWidth - controlWidth;
-			int width = setting instanceof BooleanSetting ? SwitchWidget.WIDTH : controlWidth;
 			control.setBounds(controlLeft, centerY - controlHeight / 2.0, width, controlHeight);
 			widgets.add(control);
 
 			ResetButton reset = resets.computeIfAbsent(setting, ResetButton::new);
-			reset.setBounds(x + contentWidth - controlWidth - RESET_SIZE - 6, centerY - RESET_SIZE / 2.0, RESET_SIZE, RESET_SIZE);
+			reset.setBounds(resetLeft, centerY - RESET_SIZE / 2.0, RESET_SIZE, RESET_SIZE);
 			widgets.add(reset);
 			y += height;
 		}
@@ -215,10 +222,15 @@ final class SettingsPage extends MenuPage {
 
 		if (module instanceof HudModule) {
 			if (editHud == null) {
-				editHud = new Button("Edit position", Button.Kind.SECONDARY, actions::editHud).usableWhen(actions::canEditHud);
+				// Only an element that is showing can be moved in the editor.
+				editHud = new Button("Edit position", Button.Kind.SECONDARY, actions::editHud)
+						.usableWhen(() -> actions.canEditHud() && module.isActive())
+						.tooltip(() -> !actions.canEditHud() ? "Join a world to move HUD elements."
+								: module.isBlocked() ? "Blocked on this server."
+								: !module.isEnabled() ? "Turn " + module.name() + " on to move it."
+								: null);
 			}
 
-			editHud.tooltip(actions.canEditHud() ? null : "Join a world to move HUD elements.");
 			editHud.setBounds(resetButton.right() + 8, y, editHud.preferredWidth(painter), Button.HEIGHT);
 			widgets.add(editHud);
 		}
@@ -233,18 +245,14 @@ final class SettingsPage extends MenuPage {
 
 	/** Resetting is a two-click action, so a stray click can't wipe a configured module. */
 	private void resetClicked() {
-		long now = Util.getMillis();
+		if (!resetConfirm.click(Util.getMillis())) {
+			return;
+		}
 
-		if (now - resetArmedAt < CONFIRM_MS) {
-			resetArmedAt = Long.MIN_VALUE;
-
-			if (subject.module() != null) {
-				subject.module().resetToDefaults();
-			} else {
-				subject.settings().resetSettings();
-			}
+		if (subject.module() != null) {
+			subject.module().resetToDefaults();
 		} else {
-			resetArmedAt = now;
+			subject.settings().resetSettings();
 		}
 	}
 
@@ -260,7 +268,7 @@ final class SettingsPage extends MenuPage {
 
 	@Override
 	void renderBackground(Painter painter, double mouseX, double mouseY, boolean mouseInside, float seconds) {
-		boolean armed = Util.getMillis() - resetArmedAt < CONFIRM_MS;
+		boolean armed = resetConfirm.isArmed(Util.getMillis());
 
 		if (resetButton != null) {
 			resetButton.label(resetLabel(armed));
