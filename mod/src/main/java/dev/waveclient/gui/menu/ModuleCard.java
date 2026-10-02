@@ -2,6 +2,7 @@ package dev.waveclient.gui.menu;
 
 import com.mojang.blaze3d.platform.cursor.CursorType;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
+import net.minecraft.client.input.KeyEvent;
 
 import dev.waveclient.gui.render.Painter;
 import dev.waveclient.gui.render.Text;
@@ -66,6 +67,11 @@ final class ModuleCard extends Widget {
 			detailColor = Theme.TEXT_MUTED;
 		}
 
+		if (showsFocus(painter)) {
+			painter.roundRect(x - 1.5, y - 1.5, width + 3, height + 3, Theme.RADIUS_MEDIUM + 1, Theme.withAlpha(Theme.ACCENT, 0xA0));
+			painter.roundRect(x, y, width, height, Theme.RADIUS_MEDIUM, Theme.mix(Theme.SURFACE, Theme.SURFACE_HOVER, hover), border);
+		}
+
 		descriptionCut = detailColor == Theme.TEXT_MUTED && detail.isCut(painter, detailWidth);
 		detail.drawFitted(painter, x + PADDING, y + 31, detailWidth, detailColor);
 		toggle.render(painter, hovered && toggle.contains(mouseX, mouseY), mouseX, mouseY, seconds);
@@ -82,6 +88,26 @@ final class ModuleCard extends Widget {
 		}
 
 		open.run();
+		return true;
+	}
+
+	/** Enter opens the settings, Space turns the module on or off. */
+	@Override
+	public boolean keyPressed(KeyEvent event) {
+		if (event.isConfirmation()) {
+			open.run();
+			return true;
+		}
+
+		if (event.isSelection()) {
+			return toggle.keyPressed(event) || true;
+		}
+
+		return false;
+	}
+
+	@Override
+	public boolean isFocusable() {
 		return true;
 	}
 

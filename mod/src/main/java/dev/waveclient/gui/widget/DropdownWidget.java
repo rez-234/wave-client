@@ -16,12 +16,11 @@ import dev.waveclient.setting.EnumSetting;
  */
 public final class DropdownWidget extends Widget {
 	public static final int HEIGHT = 16;
-	private static final String CHEVRON = "▾";
+	private static final double CARET_WIDTH = 5;
 
 	private final EnumSetting<?> setting;
 	private final PopoverHost host;
 	private final Text label = new Text(UiFont.BODY);
-	private final Text chevron = new Text(UiFont.BODY, CHEVRON);
 	private Enum<?> shown;
 
 	public DropdownWidget(EnumSetting<?> setting, PopoverHost host) {
@@ -39,13 +38,12 @@ public final class DropdownWidget extends Widget {
 			label.set(setting.displayValue());
 		}
 
-		int border = isFocused() ? Theme.ACCENT : Theme.mix(Theme.BORDER, Theme.TEXT_MUTED, hover * 0.35f);
+		int border = showsFocus(painter) ? Theme.ACCENT : Theme.mix(Theme.BORDER, Theme.TEXT_MUTED, hover * 0.35f);
 		painter.roundRect(x, y, width, height, Theme.RADIUS_SMALL, Theme.mix(Theme.SURFACE_RAISED, Theme.SURFACE_HOVER, hover), border);
 
 		double centerY = y + height / 2.0;
-		float chevronWidth = chevron.width(painter);
-		chevron.drawCentered(painter, x + width - 6 - chevronWidth, centerY, Theme.TEXT_MUTED);
-		label.drawFitted(painter, x + 6, centerY, Math.max(0, (int) (width - 16 - chevronWidth)), Theme.TEXT);
+		painter.caretDown(x + width - 6 - CARET_WIDTH / 2, centerY, CARET_WIDTH, Theme.TEXT_MUTED);
+		label.drawFitted(painter, x + 6, centerY, Math.max(0, (int) (width - 16 - CARET_WIDTH)), Theme.TEXT);
 	}
 
 	@Override

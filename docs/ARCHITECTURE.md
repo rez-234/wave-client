@@ -52,9 +52,9 @@ wave-client/
 | `input` | `Keybind`, `KeybindDispatcher` |
 | `config` | `ConfigManager`, `ConfigSerializer`, `ConfigMigrations`, `AtomicFiles` |
 | `hud` | `HudModule`, `HudPosition`, `Anchor`, `HudLayer`, `SnapEngine`, `CachedText` |
-| `gui` | `theme`, `widget`, `screen` (`ModMenuScreen`, `HudEditorScreen`) |
+| `gui` | `theme` (tokens, fonts), `render` (`Painter`, `Text`), `widget`, `menu` (`ModMenuScreen` and its pages), `screen` (`HudEditorScreen`), `PauseMenuButton` |
 | `command` | `/wave` client command (list, toggle, get/set settings, save/reload) |
-| `compat` | Optional integrations (Iris, Mod Menu), loaded only when present |
+| `compat` | Optional integrations (Mod Menu), loaded only when present |
 | `mixin` | Mixins and accessors |
 
 Code in `module`, `setting`, `input` and `config` (and the math in `hud`) does not import
@@ -124,8 +124,8 @@ always processed so held keys never get stuck. Binds are stored as `key:<glfw co
 Drag to move, use the corner handle or scroll to scale, arrow keys to nudge (Shift: 10px), R to
 reset the selected element. Elements snap within 4px to screen edges, the screen's center lines,
 and other elements' edges and centers, with guide lines drawn; hold Alt to disable snapping.
-Buttons: "Reset all" and "Done". Step 4 adds a "Mods" button and right-click for an element's
-settings.
+Buttons: "Mods", "Reset all" and "Done"; right-click an element to open its settings in the mod
+menu. Returning from the menu refreshes the element list, since modules may have been toggled.
 
 The behaviour lives in `HudEditController`, `SnapEngine` and `ToggleKeyGesture`, which use no
 Minecraft types and are unit tested; `HudEditorScreen` forwards input to them and draws. Edited
@@ -137,10 +137,43 @@ Only active elements are shown, so a module blocked by the server stays hidden.
 
 ### Mod menu
 
-The mod menu has a category sidebar, search, module cards with toggles, and a settings
-panel with our own widgets. It opens from the HUD editor, a pause-menu button, its own bind,
-and Mod Menu's config button. It uses the same design tokens as the launcher. Menus use
-Inter (TTF font provider); HUD text uses the vanilla font by default.
+The mod menu has a category sidebar, search, module cards with switches, and a settings page
+per module (and one for the client's own settings) with our own widgets: switch, slider, color
+picker, key capture, dropdown, text field. It opens from the HUD editor (Mods button, or
+right-click an element), a pause-menu button, its own bind (unbound by default), and Mod
+Menu's Configure button. It uses the same design tokens as the launcher.
+
+- **Own widgets, own input routing.** `ModMenuScreen` draws and hit-tests everything itself
+  (`gui.widget.Widget`, not vanilla widgets), so every input path is explicit: an open popover
+  gets events first, then a key binding waiting for a key, then the focused widget, then the
+  screen's shortcuts. Escape closes the popover, cancels key capture, clears a focused search,
+  or closes the menu, in that order. Logic with no Minecraft types (`ModuleSearch`,
+  `ScrollState`, `TextFieldModel`, `ColorPickerModel`, `KeyCapture`, `ButtonPlacement`,
+  `CornerMask`) is unit tested.
+- **Layering.** Content scrolls inside a scissor with the pose translated by the scroll offset;
+  popovers and tooltips are drawn after `nextStratum()` so they sit above all earlier text.
+  No background blur: a flat dim in a world, an opaque background on the title screen.
+- **Shapes.** `Painter` draws rounded rectangles in screen pixels (pose scaled by 1/GUI scale)
+  with anti-aliased corners, so corners match the launcher's CSS radii instead of a staircase
+  of GUI pixels. The color picker's square is one vertical gradient per screen-pixel column,
+  which is exact because RGB is linear in HSV value.
+- **Text.** Inter Medium (body) and SemiBold (labels, titles), subset to Latin, Greek,
+  Cyrillic and common symbols, with the vanilla font as fallback for other characters.
+  Minecraft rasterises a TTF once at `size * oversample` and samples it with nearest
+  filtering, so text is only sharp when oversample equals the GUI scale. Each style therefore
+  ships one font definition per GUI scale (2 to 10, `assets/waveclient/font/ui/`) and the menu
+  picks the current one. GUI scale 1 uses the vanilla font, and so does the menu if Inter fails
+  to load (detected by measuring "iiii" against "WWWW"). Styled text and its measurements are
+  cached in `Text` and rebuilt when the GUI scale, font or resources change.
+- **Pause menu button.** A 20x20 icon button added in a late `ScreenEvents.AFTER_INIT` phase,
+  4px left of "Options..." (found by translation key), with fallbacks that never overlap any
+  visible button, so it coexists with every Mod Menu layout. Toggle: client setting
+  `pauseMenuButton`.
+- **Mod Menu.** `compat.ModMenuIntegration` is the `modmenu` entrypoint. It compiles against
+  stand-in interfaces in the `modmenuApi` source set (compile classpath only, not in the jar),
+  so builds never download Mod Menu; `-Pcompat` runs the real Mod Menu in dev.
+- **State.** The menu remembers its section, open module and scroll positions while the game
+  runs (not across restarts). The config is saved when the menu closes.
 
 ### Feature hooks
 
@@ -164,7 +197,7 @@ Inter (TTF font provider); HUD text uses the vanilla font by default.
 - Nothing touches terrain/chunk rendering, block models or the video settings screen
   (Sodium). Lithium only changes game logic.
 - Iris is an optional dependency, used only when installed.
-- `./gradlew runClient -Pcompat` runs with Sodium, Lithium and Iris.
+- `./gradlew runClient -Pcompat` runs with Sodium, Lithium, Iris and Mod Menu.
 
 ## Launcher
 

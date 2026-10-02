@@ -45,6 +45,11 @@ final class ModuleListPage extends MenuPage {
 
 	@Override
 	String key() {
+		// Search results keep their own scroll, so they never overwrite the list's.
+		if (searching()) {
+			return "search";
+		}
+
 		return section instanceof MenuState.OfCategory of ? "list:" + of.category().name() : "list:all";
 	}
 

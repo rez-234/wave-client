@@ -91,11 +91,17 @@ public final class Button extends Widget {
 			}
 		}
 
-		if (isFocused() && enabled) {
+		if (showsFocus(painter) && enabled) {
 			painter.outline(x - 1, y - 1, width + 2, height + 2, ColorMath.withAlpha(Theme.ACCENT, 0xA0));
 		}
 
+		// Icon-sized buttons (a single glyph such as the close button's "×") skip the padding.
 		int maxWidth = Math.max(0, width - 2 * PADDING);
+
+		if (label.width(painter) > maxWidth && label.width(painter) <= width) {
+			maxWidth = width;
+		}
+
 		float labelWidth = label.fittedWidth(painter, maxWidth);
 		label.drawFitted(painter, x + (width - labelWidth) / 2, y + height / 2.0, maxWidth, text);
 	}
@@ -118,6 +124,11 @@ public final class Button extends Widget {
 		}
 
 		return false;
+	}
+
+	@Override
+	public boolean isFocusable() {
+		return true;
 	}
 
 	@Override

@@ -50,10 +50,23 @@ class UiFontFilesTest {
 	}
 
 	@Test
-	void scalesOutsideTheRangeAreClamped() {
-		assertEquals("ui/body_2", UiFont.BODY.definition(1));
-		assertEquals("ui/heading_10", UiFont.HEADING.definition(14));
-		assertTrue(!UiFont.supports(1) && UiFont.supports(2));
+	void largeScalesUseADivisorOrTheVanillaFont() {
+		assertEquals(0, UiFont.oversample(1), "too small to read");
+		assertEquals(2, UiFont.oversample(2));
+		assertEquals(10, UiFont.oversample(10));
+		assertEquals(6, UiFont.oversample(12), "each texel is a 2x2 block");
+		assertEquals(7, UiFont.oversample(14));
+		assertEquals(9, UiFont.oversample(18));
+		assertEquals(0, UiFont.oversample(11), "prime: no even mapping");
+		assertEquals(0, UiFont.oversample(13));
+		assertEquals("ui/heading_7", UiFont.HEADING.definition(14));
+		assertTrue(!UiFont.supports(1) && UiFont.supports(2) && !UiFont.supports(17));
+
+		for (int scale = 1; scale <= 40; scale++) {
+			int oversample = UiFont.oversample(scale);
+			assertTrue(oversample == 0 || (scale % oversample == 0 && oversample >= UiFont.MIN_SCALE && oversample <= UiFont.MAX_SCALE), "scale " + scale);
+		}
 		assertEquals(6.0, UiFont.STRONG.capHeight(2), 1e-9, "8 * 0.7275 * 2 = 11.6 screen pixels, hinted to 12");
+		assertEquals(UiFont.STRONG.capHeight(6), UiFont.STRONG.capHeight(12), 1e-9, "measured at the oversample actually used");
 	}
 }

@@ -67,7 +67,7 @@ public final class SwitchWidget extends Widget {
 		double knobX = x + PADDING + knob * (width - 2 * PADDING - size);
 		int knobColor = enabled ? Theme.ON_ACCENT : Theme.TEXT_MUTED;
 
-		if (isFocused() && enabled) {
+		if (showsFocus(painter) && enabled) {
 			painter.pill(knobX - 1, y + PADDING - 1, size + 2, size + 2, ColorMath.withAlpha(Theme.ON_ACCENT, 0x40));
 		}
 

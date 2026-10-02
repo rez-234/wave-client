@@ -129,6 +129,14 @@ public final class KeyNames {
 		}
 	}
 
+	/**
+	 * Whether pressing the key normally types a character (letters, digits, punctuation, space,
+	 * the keypad's digits and operators), as opposed to function, navigation and modifier keys.
+	 */
+	public static boolean isPrintable(int code) {
+		return (code >= 32 && code <= 162) || (code >= 320 && code <= 336 && code != 335);
+	}
+
 	public static String mouseLabel(int button) {
 		return switch (button) {
 			case 0 -> "Left Mouse";

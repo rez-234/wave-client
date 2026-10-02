@@ -47,7 +47,7 @@ public final class SliderWidget extends Widget {
 	@Override
 	public void render(Painter painter, boolean hovered, double mouseX, double mouseY, float seconds) {
 		animateHover(hovered || dragging, seconds);
-		knobGrow = Anim.approach(knobGrow, dragging || isFocused() ? 1 : hover, seconds, 16);
+		knobGrow = Anim.approach(knobGrow, dragging || showsFocus(painter) ? 1 : hover, seconds, 16);
 		double centerY = y + height / 2.0;
 
 		if (setting.get() != shownValue) {
@@ -68,7 +68,7 @@ public final class SliderWidget extends Widget {
 		double size = KNOB + knobGrow;
 		double knobX = left + trackWidth * fraction - size / 2;
 
-		if (isFocused()) {
+		if (showsFocus(painter)) {
 			painter.pill(knobX - 1.5, centerY - size / 2 - 1.5, size + 3, size + 3, ColorMath.withAlpha(Theme.ACCENT, 0x50));
 		}
 

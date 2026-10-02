@@ -108,6 +108,11 @@ public abstract class Widget {
 	protected void onFocusChanged(boolean focused) {
 	}
 
+	/** Whether to draw a focus ring: focused, and focus came from the keyboard. */
+	protected final boolean showsFocus(Painter painter) {
+		return focused && painter.focusVisible();
+	}
+
 	/**
 	 * Whether this widget wants every key while focused, so Escape and typing don't reach the
 	 * screen (a key being captured, or text being edited).

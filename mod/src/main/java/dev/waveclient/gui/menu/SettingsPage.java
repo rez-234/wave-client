@@ -1,7 +1,9 @@
 package dev.waveclient.gui.menu;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 import com.mojang.blaze3d.platform.cursor.CursorType;
@@ -73,6 +75,14 @@ final class SettingsPage extends MenuPage {
 	private final Text status = new Text(UiFont.BODY);
 	private final List<Row> rows = new ArrayList<>();
 	private final List<Setting<?>> shown = new ArrayList<>();
+	// Widgets are kept across layouts (a setting's visibility changing relays the page out),
+	// so focus, hover and switch animations carry over.
+	private final Map<Setting<?>, Widget> controls = new IdentityHashMap<>();
+	private final Map<Setting<?>, ResetButton> resets = new IdentityHashMap<>();
+	private final Map<Setting<?>, Text[]> texts = new IdentityHashMap<>();
+	private Button back;
+	private SwitchWidget enabled;
+	private Button editHud;
 	private double titleCenterY;
 	private double descriptionTop;
 	private Button resetButton;
@@ -114,9 +124,24 @@ final class SettingsPage extends MenuPage {
 		return result;
 	}
 
+	/** Checked every frame, so it compares in place instead of building a new list. */
 	@Override
 	boolean needsLayout() {
-		return !visibleSettings().equals(shown);
+		Module module = subject.module();
+		int index = 0;
+
+		for (Setting<?> setting : subject.settings().settings()) {
+			if (setting.isVisible() && (module == null || setting != module.toggleKey)) {
+				if (index >= shown.size() || shown.get(index) != setting) {
+					return true;
+				}
+
+				index++;
+			}
+		}
+
+		// A module's toggle key comes last.
+		return index != shown.size() - (module != null ? 1 : 0);
 	}
 
 	@Override
@@ -128,7 +153,10 @@ final class SettingsPage extends MenuPage {
 		double x = left + PADDING;
 		double y = top + PADDING;
 
-		Button back = new Button("‹  Back", Button.Kind.GHOST, actions::back);
+		if (back == null) {
+			back = new Button("‹  Back", Button.Kind.GHOST, actions::back);
+		}
+
 		back.setBounds(x - 6, y, back.preferredWidth(painter), Button.HEIGHT);
 		widgets.add(back);
 		y += Button.HEIGHT + 8;
@@ -137,7 +165,10 @@ final class SettingsPage extends MenuPage {
 		Module module = subject.module();
 
 		if (module != null) {
-			SwitchWidget enabled = new SwitchWidget(module::isEnabled, module::toggle, () -> !module.isBlocked());
+			if (enabled == null) {
+				enabled = new SwitchWidget(module::isEnabled, module::toggle, () -> !module.isBlocked());
+			}
+
 			enabled.setBounds(x + contentWidth - SwitchWidget.WIDTH, titleCenterY - SwitchWidget.HEIGHT / 2.0, SwitchWidget.WIDTH, SwitchWidget.HEIGHT);
 			widgets.add(enabled);
 		}
@@ -150,39 +181,44 @@ final class SettingsPage extends MenuPage {
 		double labelWidth = Math.max(40, contentWidth - controlWidth - RESET_SIZE - 12);
 
 		for (Setting<?> setting : shown) {
-			Text label = new Text(UiFont.BODY, setting.name());
-			Text help = new Text(UiFont.BODY, setting.description());
+			Text[] text = texts.computeIfAbsent(setting, s -> new Text[] {new Text(UiFont.BODY, s.name()), new Text(UiFont.BODY, s.description())});
+			Text label = text[0];
+			Text help = text[1];
 			int helpLines = help.isEmpty() ? 0 : help.lines(painter, (int) labelWidth).size();
 			double height = 2 * ROW_PADDING + FIRST_LINE + (helpLines > 0 ? helpLines * LINE + 1 : 0);
 			rows.add(new Row(setting, label, help, y, height, labelWidth));
 
 			double centerY = y + ROW_PADDING + FIRST_LINE / 2.0;
-			Widget control = control(setting);
+			Widget control = controls.computeIfAbsent(setting, this::control);
 			int controlHeight = control.height();
 			double controlLeft = setting instanceof BooleanSetting ? x + contentWidth - SwitchWidget.WIDTH : x + contentWidth - controlWidth;
 			int width = setting instanceof BooleanSetting ? SwitchWidget.WIDTH : controlWidth;
 			control.setBounds(controlLeft, centerY - controlHeight / 2.0, width, controlHeight);
 			widgets.add(control);
 
-			ResetButton reset = new ResetButton(setting);
+			ResetButton reset = resets.computeIfAbsent(setting, ResetButton::new);
 			reset.setBounds(x + contentWidth - controlWidth - RESET_SIZE - 6, centerY - RESET_SIZE / 2.0, RESET_SIZE, RESET_SIZE);
 			widgets.add(reset);
 			y += height;
 		}
 
 		y += 12;
-		resetButton = new Button(resetLabel(false), Button.Kind.DANGER, this::resetClicked);
-		resetButton.setBounds(x, y, resetButton.preferredWidth(painter) + 24, Button.HEIGHT);
+		if (resetButton == null) {
+			resetButton = new Button(resetLabel(false), Button.Kind.DANGER, this::resetClicked);
+		}
+
+		// Wide enough for both labels, so arming it doesn't change its size.
+		int armedWidth = resetButton.label(resetLabel(true)).preferredWidth(painter);
+		int normalWidth = resetButton.label(resetLabel(false)).preferredWidth(painter);
+		resetButton.setBounds(x, y, Math.max(armedWidth, normalWidth), Button.HEIGHT);
 		widgets.add(resetButton);
 
 		if (module instanceof HudModule) {
-			Button editHud = new Button("Edit position", Button.Kind.SECONDARY, actions::editHud)
-					.usableWhen(actions::canEditHud);
-
-			if (!actions.canEditHud()) {
-				editHud.tooltip("Join a world to move HUD elements.");
+			if (editHud == null) {
+				editHud = new Button("Edit position", Button.Kind.SECONDARY, actions::editHud).usableWhen(actions::canEditHud);
 			}
 
+			editHud.tooltip(actions.canEditHud() ? null : "Join a world to move HUD elements.");
 			editHud.setBounds(resetButton.right() + 8, y, editHud.preferredWidth(painter), Button.HEIGHT);
 			widgets.add(editHud);
 		}

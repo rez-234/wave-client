@@ -57,7 +57,7 @@ public final class KeybindWidget extends Widget {
 
 		// Recomputed every frame: another binding may change while this one is on screen.
 		conflict = listening || !setting.get().isBound() ? null : conflicts.apply(setting);
-		int border = listening || isFocused() ? Theme.ACCENT
+		int border = listening || showsFocus(painter) ? Theme.ACCENT
 				: conflict != null ? Theme.DANGER
 				: Theme.mix(Theme.BORDER, Theme.TEXT_MUTED, hover * 0.35f);
 		painter.roundRect(x, y, width, height, Theme.RADIUS_SMALL, Theme.mix(Theme.SURFACE_RAISED, Theme.SURFACE_HOVER, hover), border);

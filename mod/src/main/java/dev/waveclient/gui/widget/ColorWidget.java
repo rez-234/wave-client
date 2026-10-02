@@ -38,7 +38,7 @@ public final class ColorWidget extends Widget {
 			hex.set(ColorPickerPopover.format(setting));
 		}
 
-		int border = isFocused() ? Theme.ACCENT : Theme.mix(Theme.BORDER, Theme.TEXT_MUTED, hover * 0.35f);
+		int border = showsFocus(painter) ? Theme.ACCENT : Theme.mix(Theme.BORDER, Theme.TEXT_MUTED, hover * 0.35f);
 		painter.roundRect(x, y, width, height, Theme.RADIUS_SMALL, Theme.mix(Theme.SURFACE_RAISED, Theme.SURFACE_HOVER, hover), border);
 
 		double swatchX = x + 4;

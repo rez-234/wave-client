@@ -39,6 +39,8 @@ public final class HudEditorScreen extends Screen {
 	private static final int LABEL_GAP = 3;
 
 	private final WaveClient wave;
+	/** Where Done and Escape go back to: the mod menu, or {@code null} for the game. */
+	private final Screen parent;
 	private List<HudModule> elements;
 	private HudEditController controller;
 	private final List<EditorButton> buttons = new ArrayList<>(3);
@@ -47,8 +49,13 @@ public final class HudEditorScreen extends Screen {
 	private final ToggleKeyGesture editorKey;
 
 	public HudEditorScreen(WaveClient wave) {
+		this(wave, null);
+	}
+
+	public HudEditorScreen(WaveClient wave, Screen parent) {
 		super(TITLE);
 		this.wave = wave;
+		this.parent = parent;
 		this.elements = enabledElements();
 		this.controller = new HudEditController(this.elements);
 		this.editorKey = new ToggleKeyGesture(wave.clientSettings().hudEditorKey.isDown());
@@ -96,10 +103,27 @@ public final class HudEditorScreen extends Screen {
 		buttons.add(new EditorButton("Done", left + 2 * (BUTTON_WIDTH + BUTTON_GAP), y, this::onClose));
 	}
 
-	/** Opens the mod menu on top of the editor, at {@code module}'s settings if given. */
+	/**
+	 * Opens the mod menu, at {@code module}'s settings if given. If the editor was opened from
+	 * the menu, it goes back to that menu instead of stacking another.
+	 */
 	private void openMenu(Module module) {
 		controller.release();
-		minecraft.setScreen(new ModMenuScreen(wave, this, module));
+
+		if (parent instanceof ModMenuScreen menu) {
+			if (module != null) {
+				menu.showModule(module);
+			}
+
+			minecraft.setScreen(menu);
+		} else {
+			minecraft.setScreen(new ModMenuScreen(wave, this, module));
+		}
+	}
+
+	@Override
+	public void onClose() {
+		minecraft.setScreen(parent);
 	}
 
 	@Override

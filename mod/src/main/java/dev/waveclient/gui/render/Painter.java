@@ -1,12 +1,16 @@
 package dev.waveclient.gui.render;
 
+import java.util.Arrays;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.navigation.ScreenRectangle;
 import net.minecraft.network.chat.FontDescription;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.FormattedCharSequence;
+import org.joml.Matrix3x2f;
 import org.joml.Matrix3x2fStack;
 
 import dev.waveclient.WaveClient;
@@ -16,9 +20,10 @@ import dev.waveclient.util.ColorMath;
 /**
  * Draws the menu's shapes and text on top of {@link GuiGraphics}.
  *
- * <p>Coordinates are GUI pixels. Rounded shapes are drawn in screen pixels (by scaling the pose
- * down by the GUI scale), with anti-aliased corners from {@link CornerMask}, so a 3 px radius
- * looks the same as the launcher's CSS instead of a staircase of GUI pixels.
+ * <p>Coordinates are GUI pixels. Shapes are built in screen pixels (the pose is scaled down by
+ * the GUI scale), with anti-aliased corners from {@link CornerMask}, so a 3 px radius looks the
+ * same as the launcher's CSS instead of a staircase of GUI pixels. Each shape is submitted as a
+ * single GUI element ({@link QuadBatchRenderState}), however many rectangles it is made of.
  *
  * <p>One instance lives per screen; call {@link #begin} at the start of each frame.
  */
@@ -34,6 +39,13 @@ public final class Painter {
 	private int generation;
 	private int checkedScale = -1;
 	private boolean interLoaded;
+	private boolean focusVisible;
+	private int[] quads = new int[64 * QuadBatchRenderState.STRIDE];
+	private int count;
+	private int minX = Integer.MAX_VALUE;
+	private int minY = Integer.MAX_VALUE;
+	private int maxX = Integer.MIN_VALUE;
+	private int maxY = Integer.MIN_VALUE;
 
 	/**
 	 * @param preferInter whether the player wants Inter; it's still not used at GUI scale 1
@@ -97,6 +109,18 @@ public final class Painter {
 		return generation;
 	}
 
+	/**
+	 * Whether keyboard focus should be drawn: true after Tab moved it, false after a click, like
+	 * the web's :focus-visible. Text fields show focus either way.
+	 */
+	public boolean focusVisible() {
+		return focusVisible;
+	}
+
+	public void setFocusVisible(boolean focusVisible) {
+		this.focusVisible = focusVisible;
+	}
+
 	public GuiGraphics graphics() {
 		return graphics;
 	}
@@ -123,11 +147,11 @@ public final class Painter {
 	}
 
 	private Style interStyle(UiFont uiFont) {
-		int s = Math.max(UiFont.MIN_SCALE, Math.min(scale, UiFont.MAX_SCALE));
+		int s = Math.max(UiFont.MIN_SCALE, UiFont.oversample(scale));
 		Style style = styles[uiFont.ordinal()][s];
 
 		if (style == null) {
-			Identifier id = Identifier.fromNamespaceAndPath(WaveClient.MOD_ID, uiFont.definition(s));
+			Identifier id = Identifier.fromNamespaceAndPath(WaveClient.MOD_ID, uiFont.definition(scale));
 			style = Style.EMPTY.withFont(new FontDescription.Resource(id)).withoutShadow();
 			styles[uiFont.ordinal()][s] = style;
 		}
@@ -151,10 +175,12 @@ public final class Painter {
 			return;
 		}
 
+		// Glyph texels are 1/oversample GUI pixels; keep text on that grid so they stay whole.
+		int grid = inter ? Math.max(1, UiFont.oversample(scale)) : scale;
 		int ix = (int) Math.floor(x);
 		int iy = (int) Math.floor(y);
-		float fx = snap(x - ix);
-		float fy = snap(y - iy);
+		float fx = Math.round((x - ix) * grid) / (float) grid;
+		float fy = Math.round((y - iy) * grid) / (float) grid;
 
 		if (fx == 0 && fy == 0) {
 			graphics.drawString(font, text, ix, iy, color, false);
@@ -173,53 +199,32 @@ public final class Painter {
 		return font.getSplitter().stringWidth(text);
 	}
 
-	// Shapes.
+	// Shapes. Each public method submits one GUI element (see QuadBatchRenderState).
 
 	public void rect(double x, double y, double width, double height, int color) {
-		if (width <= 0 || height <= 0 || (color >>> 24) == 0) {
-			return;
-		}
-
-		int s = scale;
-		int x0 = px(x);
-		int y0 = px(y);
-		int x1 = px(x + width);
-		int y1 = px(y + height);
-
-		if (x0 % s == 0 && y0 % s == 0 && x1 % s == 0 && y1 % s == 0) {
-			graphics.fill(x0 / s, y0 / s, x1 / s, y1 / s, color);
-			return;
-		}
-
-		Matrix3x2fStack pose = graphics.pose();
-		pose.pushMatrix();
-		pose.scale(1f / s, 1f / s);
-		graphics.fill(x0, y0, x1, y1, color);
-		pose.popMatrix();
+		addRect(px(x), px(y), px(x + width), px(y + height), color);
+		flush();
 	}
 
 	/** A one-screen-pixel outline just inside the given bounds. */
 	public void outline(double x, double y, double width, double height, int color) {
-		float h = hairline();
-		rect(x, y, width, h, color);
-		rect(x, y + height - h, width, h, color);
-		rect(x, y + h, h, height - 2 * h, color);
-		rect(x + width - h, y + h, h, height - 2 * h, color);
+		int x0 = px(x);
+		int y0 = px(y);
+		int x1 = px(x + width);
+		int y1 = px(y + height);
+		addRect(x0, y0, x1, y0 + 1, color);
+		addRect(x0, y1 - 1, x1, y1, color);
+		addRect(x0, y0 + 1, x0 + 1, y1 - 1, color);
+		addRect(x1 - 1, y0 + 1, x1, y1 - 1, color);
+		flush();
 	}
 
 	/** A filled rectangle with anti-aliased rounded corners. {@code radius} is in GUI pixels. */
 	public void roundRect(double x, double y, double width, double height, double radius, int color) {
-		if (width <= 0 || height <= 0 || (color >>> 24) == 0) {
-			return;
-		}
-
-		Matrix3x2fStack pose = graphics.pose();
-		pose.pushMatrix();
-		pose.scale(1f / scale, 1f / scale);
 		int x0 = px(x);
 		int y0 = px(y);
-		fillRounded(x0, y0, px(x + width) - x0, px(y + height) - y0, (int) Math.round(radius * scale), color);
-		pose.popMatrix();
+		addRounded(x0, y0, px(x + width) - x0, px(y + height) - y0, (int) Math.round(radius * scale), color);
+		flush();
 	}
 
 	/**
@@ -227,22 +232,15 @@ public final class Painter {
 	 * should be opaque: the border is drawn underneath it.
 	 */
 	public void roundRect(double x, double y, double width, double height, double radius, int fill, int border) {
-		if (width <= 0 || height <= 0) {
-			return;
-		}
-
-		Matrix3x2fStack pose = graphics.pose();
-		pose.pushMatrix();
-		pose.scale(1f / scale, 1f / scale);
 		int x0 = px(x);
 		int y0 = px(y);
 		int w = px(x + width) - x0;
 		int h = px(y + height) - y0;
 		int r = (int) Math.round(radius * scale);
 		int b = borderWidth();
-		fillRounded(x0, y0, w, h, r, border);
-		fillRounded(x0 + b, y0 + b, w - 2 * b, h - 2 * b, Math.max(0, r - b), fill);
-		pose.popMatrix();
+		addRounded(x0, y0, w, h, r, border);
+		addRounded(x0 + b, y0 + b, w - 2 * b, h - 2 * b, Math.max(0, r - b), fill);
+		flush();
 	}
 
 	/** A circle (or pill, if wider than tall) filling the bounds. */
@@ -257,15 +255,27 @@ public final class Painter {
 
 	/** A vertical gradient from {@code top} to {@code bottom}, with screen-pixel edges. */
 	public void gradient(double x, double y, double width, double height, int top, int bottom) {
-		if (width <= 0 || height <= 0) {
-			return;
+		addQuad(px(x), px(y), px(x + width), px(y + height), top, bottom);
+		flush();
+	}
+
+	/**
+	 * A small solid triangle pointing down, centered on ({@code centerX}, {@code centerY}): the
+	 * dropdown arrow. Drawn in screen-pixel rows so it is crisp at every GUI scale.
+	 *
+	 * @param width in GUI pixels; the height is half of it
+	 */
+	public void caretDown(double centerX, double centerY, double width, int color) {
+		int half = Math.max(1, (int) Math.round(width * scale / 2));
+		int cx = px(centerX);
+		int top = px(centerY) - half / 2;
+
+		for (int row = 0; row < half; row++) {
+			int inset = row;
+			addRect(cx - half + inset, top + row, cx + half - inset, top + row + 1, color);
 		}
 
-		Matrix3x2fStack pose = graphics.pose();
-		pose.pushMatrix();
-		pose.scale(1f / scale, 1f / scale);
-		graphics.fillGradient(px(x), px(y), px(x + width), px(y + height), top, bottom);
-		pose.popMatrix();
+		flush();
 	}
 
 	/**
@@ -274,9 +284,6 @@ public final class Painter {
 	 * because RGB is linear in value at a fixed hue and saturation.
 	 */
 	public void saturationValueSquare(double x, double y, double width, double height, float hue) {
-		Matrix3x2fStack pose = graphics.pose();
-		pose.pushMatrix();
-		pose.scale(1f / scale, 1f / scale);
 		int x0 = px(x);
 		int y0 = px(y);
 		int x1 = px(x + width);
@@ -285,17 +292,14 @@ public final class Painter {
 
 		for (int column = x0; column < x1; column++) {
 			float saturation = (column - x0) / (float) columns;
-			graphics.fillGradient(column, y0, column + 1, y1, ColorMath.hsvToRgb(hue, saturation, 1), 0xFF000000);
+			addQuad(column, y0, column + 1, y1, ColorMath.hsvToRgb(hue, saturation, 1), 0xFF000000);
 		}
 
-		pose.popMatrix();
+		flush();
 	}
 
 	/** A vertical rainbow for picking a hue, red at the top and bottom. */
 	public void hueBar(double x, double y, double width, double height) {
-		Matrix3x2fStack pose = graphics.pose();
-		pose.pushMatrix();
-		pose.scale(1f / scale, 1f / scale);
 		int x0 = px(x);
 		int x1 = px(x + width);
 		int y0 = px(y);
@@ -304,25 +308,28 @@ public final class Painter {
 		for (int i = 0; i < 6; i++) {
 			int top = y0 + (y1 - y0) * i / 6;
 			int bottom = y0 + (y1 - y0) * (i + 1) / 6;
-			graphics.fillGradient(x0, top, x1, bottom, ColorMath.hsvToRgb(i / 6f, 1, 1), ColorMath.hsvToRgb((i + 1) / 6f, 1, 1));
+			addQuad(x0, top, x1, bottom, ColorMath.hsvToRgb(i / 6f, 1, 1), ColorMath.hsvToRgb((i + 1) / 6f, 1, 1));
 		}
 
-		pose.popMatrix();
+		flush();
 	}
 
 	/** Gray checks that show through translucent colors. {@code cell} is in GUI pixels. */
 	public void checkerboard(double x, double y, double width, double height, double cell) {
-		rect(x, y, width, height, 0xFFBFBFBF);
-		int columns = (int) Math.ceil(width / cell);
-		int rows = (int) Math.ceil(height / cell);
+		int x0 = px(x);
+		int y0 = px(y);
+		int x1 = px(x + width);
+		int y1 = px(y + height);
+		int size = Math.max(1, (int) Math.round(cell * scale));
+		addRect(x0, y0, x1, y1, 0xFFBFBFBF);
 
-		for (int row = 0; row < rows; row++) {
-			for (int column = row & 1; column < columns; column += 2) {
-				double cx = x + column * cell;
-				double cy = y + row * cell;
-				rect(cx, cy, Math.min(cell, x + width - cx), Math.min(cell, y + height - cy), 0xFF7F7F7F);
+		for (int top = y0, row = 0; top < y1; top += size, row++) {
+			for (int left = x0 + (row & 1) * size; left < x1; left += 2 * size) {
+				addRect(left, top, Math.min(left + size, x1), Math.min(top + size, y1), 0xFF7F7F7F);
 			}
 		}
+
+		flush();
 	}
 
 	// Clipping.
@@ -343,12 +350,63 @@ public final class Painter {
 		return (int) Math.round(gui * scale);
 	}
 
-	private float snap(double fraction) {
-		return Math.round(fraction * scale) / (float) scale;
+	private void addRect(int x0, int y0, int x1, int y1, int color) {
+		addQuad(x0, y0, x1, y1, color, color);
 	}
 
-	/** Fills a rounded rectangle given in screen pixels; the pose must already be in screen pixels. */
-	private void fillRounded(int x, int y, int width, int height, int radius, int color) {
+	/** Queues a rectangle in screen pixels for the next {@link #flush()}. */
+	private void addQuad(int x0, int y0, int x1, int y1, int top, int bottom) {
+		if (x1 <= x0 || y1 <= y0 || ((top >>> 24) == 0 && (bottom >>> 24) == 0)) {
+			return;
+		}
+
+		if ((count + 1) * QuadBatchRenderState.STRIDE > quads.length) {
+			quads = Arrays.copyOf(quads, quads.length * 2);
+		}
+
+		int o = count * QuadBatchRenderState.STRIDE;
+		quads[o] = x0;
+		quads[o + 1] = y0;
+		quads[o + 2] = x1;
+		quads[o + 3] = y1;
+		quads[o + 4] = top;
+		quads[o + 5] = bottom;
+		count++;
+		minX = Math.min(minX, x0);
+		minY = Math.min(minY, y0);
+		maxX = Math.max(maxX, x1);
+		maxY = Math.max(maxY, y1);
+	}
+
+	/** Submits the queued rectangles as one element, clipped by the current scissor. */
+	private void flush() {
+		if (count == 0) {
+			return;
+		}
+
+		Matrix3x2f pose = new Matrix3x2f(graphics.pose()).scale(1f / scale);
+		ScreenRectangle bounds = new ScreenRectangle(minX, minY, maxX - minX, maxY - minY).transformMaxBounds(pose);
+		ScreenRectangle scissor = graphics.scissorStack.peek();
+
+		if (scissor != null) {
+			bounds = scissor.intersection(bounds);
+		}
+
+		if (bounds != null) {
+			// The element is kept until the frame is drawn, so it needs its own copy.
+			int[] copy = Arrays.copyOf(quads, count * QuadBatchRenderState.STRIDE);
+			graphics.guiRenderState.submitGuiElement(new QuadBatchRenderState(pose, copy, count, scissor, bounds));
+		}
+
+		count = 0;
+		minX = Integer.MAX_VALUE;
+		minY = Integer.MAX_VALUE;
+		maxX = Integer.MIN_VALUE;
+		maxY = Integer.MIN_VALUE;
+	}
+
+	/** Queues a rounded rectangle given in screen pixels. */
+	private void addRounded(int x, int y, int width, int height, int radius, int color) {
 		if (width <= 0 || height <= 0 || (color >>> 24) == 0) {
 			return;
 		}
@@ -356,23 +414,20 @@ public final class Painter {
 		int r = Math.max(0, Math.min(radius, Math.min(width, height) / 2));
 
 		if (r == 0) {
-			graphics.fill(x, y, x + width, y + height, color);
+			addRect(x, y, x + width, y + height, color);
 			return;
 		}
 
 		CornerMask mask = CornerMask.of(r);
 		r = mask.radius();
-		graphics.fill(x, y + r, x + width, y + height - r, color);
+		addRect(x, y + r, x + width, y + height - r, color);
 
 		for (int row = 0; row < r; row++) {
 			int top = y + row;
 			int bottom = y + height - 1 - row;
 			int solid = mask.solidFrom(row);
-
-			if (width - 2 * solid > 0) {
-				graphics.fill(x + solid, top, x + width - solid, top + 1, color);
-				graphics.fill(x + solid, bottom, x + width - solid, bottom + 1, color);
-			}
+			addRect(x + solid, top, x + width - solid, top + 1, color);
+			addRect(x + solid, bottom, x + width - solid, bottom + 1, color);
 
 			for (int column = 0; column < solid; column++) {
 				float coverage = mask.coverage(row, column);
@@ -384,10 +439,10 @@ public final class Painter {
 				int partial = ColorMath.fadeAlpha(color, coverage);
 				int left = x + column;
 				int right = x + width - 1 - column;
-				graphics.fill(left, top, left + 1, top + 1, partial);
-				graphics.fill(right, top, right + 1, top + 1, partial);
-				graphics.fill(left, bottom, left + 1, bottom + 1, partial);
-				graphics.fill(right, bottom, right + 1, bottom + 1, partial);
+				addRect(left, top, left + 1, top + 1, partial);
+				addRect(right, top, right + 1, top + 1, partial);
+				addRect(left, bottom, left + 1, bottom + 1, partial);
+				addRect(right, bottom, right + 1, bottom + 1, partial);
 			}
 		}
 	}

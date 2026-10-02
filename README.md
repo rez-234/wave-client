@@ -23,7 +23,7 @@ cd mod
 ./gradlew build        # compiles, runs unit tests, writes build/libs/waveclient-<version>.jar
 ./gradlew test         # unit tests only
 ./gradlew runClient    # starts Minecraft 1.21.11 with the mod loaded (dev account, offline)
-./gradlew runClient -Pcompat   # same, with Sodium, Lithium and Iris loaded too
+./gradlew runClient -Pcompat   # same, with Sodium, Lithium, Iris and Mod Menu loaded too
 ```
 
 On Windows use `gradlew.bat` instead of `./gradlew`.
@@ -45,6 +45,26 @@ With an Iris shader pack active, Fullbright also reports full night vision to th
 `shaderPacks`, on by default). Many packs, Complementary included, treat that as fullbright;
 how bright it looks still depends on the pack.
 
+### Mod menu
+
+Open the menu from the **Wave Client** button (the wave icon left of "Options...") in the pause
+menu, the **Mods** button in the HUD editor, or Mod Menu's **Configure** button. You can also bind
+a key to it under **Settings**.
+
+- The sidebar lists the categories; **Settings** holds the client's own options (keys, the
+  pause menu button, the menu font).
+- Start typing anywhere to search. Search matches module names, descriptions and setting names.
+- Click a card's switch to turn a module on or off, or the card itself to open its settings.
+- Every setting has its control on the right. The **↺** button beside a changed setting restores
+  its default. **Reset to defaults** (click twice) resets the whole module.
+- Click a key binding, then press a key or a mouse button (middle or side) to change it. Escape
+  cancels and Backspace clears it. Bindings shared with another Wave Client key turn red.
+- **Esc** closes the menu, or first the open color picker or dropdown, or clears the search.
+  Mouse button 4 or Backspace goes back from a settings page.
+
+The menu uses Inter, like the launcher. Change it to the Minecraft font under **Settings**
+if you prefer. At GUI scale 1 the Minecraft font is always used.
+
 ### HUD editor
 
 Press **Right Shift** in a world to open the HUD editor (change the key with
@@ -55,6 +75,7 @@ Press **Right Shift** in a world to open the HUD editor (change the key with
 - Drag the small square in an element's bottom-right corner, or scroll over it, to resize it.
 - Click an element, then use the **arrow keys** to nudge it by 1 pixel (Shift: 10). **R** resets it.
 - **Reset all** puts every element shown in the editor back to its default position and size.
+- Right-click an element to open its settings; **Mods** opens the mod menu.
 - **Esc**, **Done** or a tap of **Right Shift** closes the editor; positions are saved immediately.
 
 Positions are stored relative to the nearest screen corner, edge or center, so elements stay put
@@ -76,3 +97,10 @@ with `/wave set client hideHudWithDebug off`.
 | `/wave set <module\|client> <setting> <value>` | Change a setting, e.g. `/wave set client hudEditorKey rshift` |
 | `/wave reset <module\|client>` | Restore defaults |
 | `/wave save` / `/wave reload` | Write or re-read the config file |
+
+## Third-party assets
+
+The menu font is [Inter](https://rsms.me/inter/) 4.1 by The Inter Project Authors, licensed under
+the SIL Open Font License 1.1 (`mod/src/main/resources/assets/waveclient/font/inter/ofl.txt`).
+Wave Client ships the Medium and SemiBold weights, subset to Latin, Greek, Cyrillic and common
+symbols; other characters fall back to the Minecraft font.

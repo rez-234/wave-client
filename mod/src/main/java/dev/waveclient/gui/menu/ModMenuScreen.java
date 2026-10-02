@@ -34,6 +34,7 @@ import dev.waveclient.gui.widget.ScrollState;
 import dev.waveclient.gui.widget.TextField;
 import dev.waveclient.gui.widget.TextFieldModel;
 import dev.waveclient.gui.widget.Widget;
+import dev.waveclient.input.KeyNames;
 import dev.waveclient.input.ToggleKeyGesture;
 import dev.waveclient.module.Category;
 import dev.waveclient.module.Module;
@@ -102,6 +103,15 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 	private long tooltipSince;
 	private String tooltip;
 	private float sidebarIndicator = Float.NaN;
+	/**
+	 * A key whose auto-repeats and release are ignored; see {@link #swallow}. Its release
+	 * would otherwise reach Minecraft too (releasing F3 toggles the debug screen).
+	 */
+	private int swallowedKey = -1;
+	/** Set by {@link #swallow} and the menu key until the next key press; see there. */
+	private boolean swallowChars;
+	/** Whether focus moved by keyboard, so focus rings should show (not after a click). */
+	private boolean focusVisible;
 
 	public ModMenuScreen(WaveClient wave, Screen parent) {
 		this(wave, parent, null);
@@ -118,11 +128,15 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 		this.menuKey = new ToggleKeyGesture(wave.clientSettings().modMenuKey.isDown());
 		this.search = new TextField(new TextFieldModel(64), "Search modules");
 		this.search.onChange(query -> showList());
-		this.close = new Button("✕", Button.Kind.GHOST, this::onClose).tooltip("Close (Esc)");
+		this.close = new Button("×", Button.Kind.GHOST, this::onClose).tooltip("Close (Esc)");
 		this.editHud = new Button("Edit HUD layout", Button.Kind.SECONDARY, this::openHudEditor).usableWhen(this::canEditHud);
 
 		if (module != null) {
 			STATE.setOpenModule(module.id());
+
+			if (STATE.section() instanceof MenuState.ClientSettings) {
+				STATE.setSection(new MenuState.OfCategory(module.category()));
+			}
 		}
 
 		sidebar.add(new SidebarItem("All modules", () -> STATE.section() instanceof MenuState.All && !searching(), () -> selectSection(MenuState.ALL)));
@@ -320,6 +334,16 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 		showPage(next, searching() ? 0 : STATE.scroll(next.key()));
 	}
 
+	/** Shows {@code module}'s settings; used when the HUD editor returns here on a right-click. */
+	public void showModule(Module module) {
+		if (STATE.section() instanceof MenuState.ClientSettings) {
+			STATE.setSection(new MenuState.OfCategory(module.category()));
+		}
+
+		search.setValue("");
+		openModule(module);
+	}
+
 	private void openModule(Module module) {
 		STATE.setOpenModule(module.id());
 		showPage(moduleSettings(module), 0);
@@ -336,8 +360,9 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 			return;
 		}
 
-		// Opened from the editor: go back to it rather than stacking a second one.
-		minecraft.setScreen(parent instanceof HudEditorScreen ? parent : new HudEditorScreen(wave));
+		// Opened from the editor: go back to it rather than stacking a second one. Otherwise the
+		// editor returns here when closed.
+		minecraft.setScreen(parent instanceof HudEditorScreen ? parent : new HudEditorScreen(wave, this));
 	}
 
 	// Rendering.
@@ -362,6 +387,7 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 		float seconds = lastFrame == 0 ? 0 : Math.min(0.25f, (now - lastFrame) / 1000f);
 		lastFrame = now;
 		painter.begin(graphics, font, useInter());
+		painter.setFocusVisible(focusVisible);
 
 		if (painter.generation() != layoutGeneration || page.needsLayout()) {
 			layoutPage(scroll.target());
@@ -375,7 +401,8 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 		double offset = Math.round(scroll.offset() * painter.scale()) / (double) painter.scale();
 		boolean overPopover = popover != null && popover.contains(mouseX, mouseY);
 		boolean overContent = !overPopover && inContent(mouseX, mouseY);
-		Widget hovered = overPopover ? null : widgetAt(mouseX, mouseY, offset);
+		// While a popover is open, nothing behind it reacts to the pointer.
+		Widget hovered = popover != null ? null : widgetAt(mouseX, mouseY, offset);
 		CursorType cursor = CursorTypes.ARROW;
 
 		renderFrame();
@@ -398,8 +425,15 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 			double pageMouseY = mouseY + offset;
 			page.renderBackground(painter, mouseX, pageMouseY, overContent, seconds);
 
+			double visibleTop = contentY + offset;
+			double visibleBottom = visibleTop + contentHeight;
+
 			for (Widget widget : page.widgets()) {
-				widget.render(painter, widget == hovered, mouseX, pageMouseY, seconds);
+				// Skip widgets scrolled out of view: the scissor would hide them, but they would
+				// still cost layering work.
+				if (widget.bottom() > visibleTop && widget.y() < visibleBottom) {
+					widget.render(painter, widget == hovered, mouseX, pageMouseY, seconds);
+				}
 			}
 		} finally {
 			pose.popMatrix();
@@ -569,6 +603,8 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 	@Override
 	public void openPopover(Popover next, Widget anchor) {
 		closePopover();
+		// Finish any scroll easing first, or the content would keep moving under the popover.
+		scroll.jumpTo(scroll.target());
 		double y = page.widgets().contains(anchor) ? anchor.y() - pageOffset() : anchor.y();
 		next.place(painter, anchor.x(), y, anchor.width(), anchor.height(), width, height);
 		popover = next;
@@ -599,16 +635,37 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 
 	// Input.
 
+	private static boolean isListening(Widget widget) {
+		return widget instanceof KeybindWidget keybind && keybind.isListening();
+	}
+
+	/**
+	 * Ignores this key's auto-repeats and release, and the character it types: it just changed
+	 * what the next key press means (started or finished capturing a binding, opened or picked
+	 * from a popover), so holding it must not act again.
+	 */
+	private void swallow(int key) {
+		swallowedKey = key;
+		swallowChars = true;
+	}
+
 	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
 		double x = event.x();
 		double y = event.y();
 		int button = event.button();
-		menuKey.onOtherInput();
+		focusVisible = false;
 
-		if (focused instanceof KeybindWidget keybind && keybind.isListening()) {
-			return keybind.captureMouse(button);
+		if (isListening(focused)) {
+			return ((KeybindWidget) focused).captureMouse(button);
 		}
+
+		if (wave.clientSettings().modMenuKey.get().matchesMouse(button)) {
+			menuKey.onPress();
+			return true;
+		}
+
+		menuKey.onOtherInput();
 
 		if (popover != null) {
 			if (popover.contains(x, y)) {
@@ -678,6 +735,15 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 	public boolean mouseReleased(MouseButtonEvent event) {
 		double x = event.x();
 		double y = event.y();
+
+		if (wave.clientSettings().modMenuKey.get().matchesMouse(event.button())) {
+			if (menuKey.onRelease()) {
+				onClose();
+			}
+
+			return true;
+		}
+
 		boolean handled = draggingScrollbar || pressedPopover || pressed != null;
 
 		if (draggingScrollbar) {
@@ -721,11 +787,20 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 
 	@Override
 	public boolean keyPressed(KeyEvent event) {
-		boolean menuKeyPressed = wave.clientSettings().modMenuKey.get().matchesKey(event.key());
+		int key = event.key();
+
+		if (key == swallowedKey) {
+			return true;
+		}
+
+		swallowChars = false;
+		boolean listening = isListening(focused);
 		boolean typing = focused != null && focused.capturesKeyboard();
 
-		if (menuKeyPressed && !typing && popover == null) {
+		// The menu key toggles the menu, unless it is being bound or would type into a text field.
+		if (wave.clientSettings().modMenuKey.get().matchesKey(key) && popover == null && !listening && (!typing || !KeyNames.isPrintable(key))) {
 			menuKey.onPress();
+			swallowChars = true;
 			return true;
 		}
 
@@ -738,11 +813,24 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 				popover.keyPressed(event);
 			}
 
+			if (popover == null || popover.isClosed()) {
+				swallow(key);
+			}
+
 			// The popover is modal: nothing behind it reacts to keys.
 			return true;
 		}
 
+		if (event.isCycleFocus() && !listening) {
+			cycleFocus(!event.hasShiftDown());
+			return true;
+		}
+
 		if (focused != null && focused.keyPressed(event)) {
+			if (listening != isListening(focused) || popover != null) {
+				swallow(key);
+			}
+
 			return true;
 		}
 
@@ -756,21 +844,54 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 			return true;
 		}
 
-		if (event.key() == GLFW_KEY_F && event.hasControlDownWithQuirk()) {
+		if (key == GLFW_KEY_F && event.hasControlDownWithQuirk()) {
 			setFocus(search);
 			search.model().selectAll();
 			return true;
 		}
 
-		if (event.key() == GLFW_KEY_BACKSPACE && focused == null) {
+		if (key == GLFW_KEY_BACKSPACE && focused == null) {
 			return page.goBack();
 		}
 
 		return false;
 	}
 
+	/** Tab and Shift+Tab: search, sidebar, page controls, close. Scrolls the new focus into view. */
+	private void cycleFocus(boolean forward) {
+		List<Widget> order = new ArrayList<>();
+
+		for (Widget widget : chrome) {
+			if (widget != close && widget.isFocusable() && widget.width() > 0) {
+				order.add(widget);
+			}
+		}
+
+		for (Widget widget : page.widgets()) {
+			if (widget.isFocusable()) {
+				order.add(widget);
+			}
+		}
+
+		order.add(close);
+		int index = order.indexOf(focused);
+		int next = index < 0 ? (forward ? 0 : order.size() - 1) : Math.floorMod(index + (forward ? 1 : -1), order.size());
+		Widget target = order.get(next);
+		setFocus(target);
+		focusVisible = true;
+
+		if (page.widgets().contains(target)) {
+			scroll.reveal(target.y() - contentY - 8, target.bottom() - contentY + 8);
+		}
+	}
+
 	@Override
 	public boolean keyReleased(KeyEvent event) {
+		if (event.key() == swallowedKey) {
+			swallowedKey = -1;
+			return true;
+		}
+
 		if (wave.clientSettings().modMenuKey.get().matchesKey(event.key())) {
 			if (menuKey.onRelease()) {
 				onClose();
@@ -784,8 +905,14 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 
 	@Override
 	public boolean charTyped(CharacterEvent event) {
+		// The character of a key that was just used for something else, e.g. a captured binding.
+		if (swallowChars) {
+			return true;
+		}
+
 		if (popover != null) {
-			return popover.charTyped(event);
+			popover.charTyped(event);
+			return true;
 		}
 
 		if (focused != null && focused.charTyped(event)) {
@@ -847,6 +974,25 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 			int fill = on ? Theme.SURFACE_RAISED : Theme.withAlpha(Theme.SURFACE, Math.round(hover * 255));
 			painter.roundRect(x, y, width, height, Theme.RADIUS_SMALL, fill);
 			label.drawFitted(painter, x + 10, y + height / 2.0, width - 14, on ? Theme.TEXT : Theme.mix(Theme.TEXT_MUTED, Theme.TEXT, hover));
+
+			if (showsFocus(painter)) {
+				painter.outline(x, y, width, height, Theme.withAlpha(Theme.ACCENT, 0xA0));
+			}
+		}
+
+		@Override
+		public boolean keyPressed(KeyEvent event) {
+			if (event.isSelection()) {
+				select.run();
+				return true;
+			}
+
+			return false;
+		}
+
+		@Override
+		public boolean isFocusable() {
+			return true;
 		}
 
 		@Override

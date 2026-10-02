@@ -7,7 +7,8 @@ package dev.waveclient.gui.theme;
  * {@code size * oversample} pixels. Text is only sharp when that matches the screen, so every
  * style ships one font definition per GUI scale ({@code assets/waveclient/font/ui/<key>_<scale>.json},
  * each with {@code oversample} equal to the scale) and the menu picks the one for the current
- * scale. At GUI scale 1, Inter is too small to read, so the vanilla font is used instead.
+ * scale. At GUI scale 1, Inter is too small to read, so the vanilla font is used instead; see
+ * {@link #oversample} for scales above the largest definition.
  */
 public enum UiFont {
 	/**
@@ -51,16 +52,40 @@ public enum UiFont {
 	}
 
 	/**
-	 * Path of the font definition for a GUI scale, relative to {@code assets/waveclient/font/}.
-	 * Scales above {@link #MAX_SCALE} use the largest definition.
+	 * The oversample (and so the font definition) to use at a GUI scale, or 0 for the vanilla
+	 * font. Above {@link #MAX_SCALE}, a definition whose oversample divides the scale keeps every
+	 * glyph texel a whole block of screen pixels (scale 12 uses 6, 14 uses 7); scales with no such
+	 * divisor (11, 13, 17...) use the vanilla font rather than unevenly resampled Inter.
 	 */
-	public String definition(int guiScale) {
-		return "ui/" + key + "_" + Math.max(MIN_SCALE, Math.min(MAX_SCALE, guiScale));
+	public static int oversample(int guiScale) {
+		if (guiScale < MIN_SCALE) {
+			return 0;
+		}
+
+		if (guiScale <= MAX_SCALE) {
+			return guiScale;
+		}
+
+		for (int candidate = MAX_SCALE; candidate >= MIN_SCALE; candidate--) {
+			if (guiScale % candidate == 0) {
+				return candidate;
+			}
+		}
+
+		return 0;
 	}
 
 	/** Whether Inter is used at this GUI scale; otherwise the vanilla font is. */
 	public static boolean supports(int guiScale) {
-		return guiScale >= MIN_SCALE;
+		return oversample(guiScale) > 0;
+	}
+
+	/**
+	 * Path of the font definition for a GUI scale, relative to {@code assets/waveclient/font/}.
+	 * Only meaningful when {@link #supports} is true.
+	 */
+	public String definition(int guiScale) {
+		return "ui/" + key + "_" + Math.max(MIN_SCALE, oversample(guiScale));
 	}
 
 	/**
@@ -68,8 +93,8 @@ public enum UiFont {
 	 * whole screen pixels).
 	 */
 	public double capHeight(int guiScale) {
-		int scale = Math.max(1, guiScale);
-		return Math.round(CAP_HEIGHT * size * scale) / (double) scale;
+		int oversample = Math.max(1, oversample(guiScale));
+		return Math.round(CAP_HEIGHT * size * oversample) / (double) oversample;
 	}
 
 	/** How far descenders reach below the baseline, in GUI pixels. */
