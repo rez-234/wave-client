@@ -68,7 +68,8 @@ a key to it under **Settings**.
   or Backspace when no control is focused, goes back from a settings page.
 
 The menu uses Inter, like the launcher. Change it to the Minecraft font under **Settings**
-if you prefer. At GUI scale 1 the Minecraft font is always used.
+if you prefer. At GUI scale 1, and at a few very large GUI scales (11, 13, 17...), the
+Minecraft font is always used.
 
 ### HUD editor
 

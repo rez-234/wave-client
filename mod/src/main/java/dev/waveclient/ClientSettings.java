@@ -36,7 +36,7 @@ public final class ClientSettings extends SettingContainer {
 			.describe("Show a Wave Client button in the pause menu."));
 
 	public final EnumSetting<MenuFont> menuFont = add(new EnumSetting<>("menuFont", "Menu font", MenuFont.INTER)
-			.describe("Inter matches the launcher. At GUI scale 1 the Minecraft font is always used, because Inter is too small to read."));
+			.describe("Inter matches the launcher. At GUI scale 1 (too small for Inter) and a few very large scales (11, 13, 17...) the Minecraft font is always used."));
 
 	public final BooleanSetting hideHudWithDebug = add(new BooleanSetting("hideHudWithDebug", "Hide HUD with F3", true)
 			.describe("Hide Wave Client HUD elements while the F3 debug screen is open."));

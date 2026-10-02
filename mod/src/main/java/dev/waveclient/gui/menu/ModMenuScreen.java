@@ -279,7 +279,7 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 		layoutGeneration = painter.generation();
 
 		// Header and sidebar widgets outlive the page; only the old page's widgets lose focus.
-		if (focused != null && !chrome.contains(focused) && !page.widgets().contains(focused)) {
+		if (focused != null && (focused.width() <= 0 || !chrome.contains(focused) && !page.widgets().contains(focused))) {
 			setFocus(null);
 		}
 
@@ -871,7 +871,8 @@ public final class ModMenuScreen extends Screen implements PopoverHost {
 			return true;
 		}
 
-		if (key == GLFW_KEY_BACKSPACE && focused == null) {
+		// Reached only when the focused control (if any) didn't use the key and isn't a text field.
+		if (key == GLFW_KEY_BACKSPACE) {
 			return page.goBack();
 		}
 

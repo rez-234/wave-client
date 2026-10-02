@@ -160,10 +160,12 @@ Menu's Configure button. It uses the same design tokens as the launcher.
 - **Text.** Inter Medium (body) and SemiBold (labels, titles), subset to Latin, Greek,
   Cyrillic and common symbols, with the vanilla font as fallback for other characters.
   Minecraft rasterises a TTF once at `size * oversample` and samples it with nearest
-  filtering, so text is only sharp when oversample equals the GUI scale. Each style therefore
-  ships one font definition per GUI scale (2 to 10, `assets/waveclient/font/ui/`) and the menu
-  picks the current one. GUI scale 1 uses the vanilla font, and so does the menu if Inter fails
-  to load (detected by measuring "iiii" against "WWWW"). Styled text and its measurements are
+  filtering, so text is only sharp when every glyph texel covers a whole block of screen
+  pixels. Each style therefore ships one font definition per GUI scale from 2 to 10
+  (`assets/waveclient/font/ui/`) and the menu picks the current one; above 10 it uses a
+  definition whose oversample divides the scale (12 uses 6, 14 uses 7). GUI scale 1, and large
+  scales with no such divisor (11, 13, 17...), use the vanilla font, as does the menu if Inter
+  fails to load (detected by measuring "iiii" against "WWWW"). Styled text and its measurements are
   cached in `Text` and rebuilt when the GUI scale, font or resources change.
 - **Pause menu button.** A 20x20 icon button added in a late `ScreenEvents.AFTER_INIT` phase,
   4px left of "Options..." (found by translation key), with fallbacks that never overlap any
