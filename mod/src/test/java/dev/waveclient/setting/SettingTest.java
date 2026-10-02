@@ -207,4 +207,23 @@ class SettingTest {
 		copy.reset();
 		assertTrue(copy.isDefault());
 	}
+
+	@Test
+	void sliderUnitIsShownAndAcceptedInInput() {
+		SliderSetting s = new SliderSetting("brightness", "Brightness", 1500, 100, 1500, 50).unit("%");
+		assertEquals("1500%", s.displayValue());
+		assertTrue(s.parse("200%"));
+		assertEquals(200, s.get());
+		assertTrue(s.parse(" 300 "));
+		assertEquals(300, s.get());
+		assertFalse(s.parse("%"));
+		assertEquals("300", s.formatNumber(s.get()));
+		assertEquals(50, s.keyboardStep());
+
+		SliderSetting spaced = new SliderSetting("delay", "Delay", 10, 0, 100, 0).unit(" ms");
+		assertEquals("10.00 ms", spaced.displayValue());
+		assertTrue(spaced.parse("20 MS"));
+		assertEquals(20, spaced.get());
+		assertEquals(1, spaced.keyboardStep(), "continuous: 1% of the range");
+	}
 }

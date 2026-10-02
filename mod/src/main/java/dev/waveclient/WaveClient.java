@@ -16,6 +16,8 @@ import org.slf4j.LoggerFactory;
 
 import dev.waveclient.command.WaveCommand;
 import dev.waveclient.config.ConfigManager;
+import dev.waveclient.gui.PauseMenuButton;
+import dev.waveclient.gui.menu.ModMenuScreen;
 import dev.waveclient.gui.screen.HudEditorScreen;
 import dev.waveclient.hud.HudLayer;
 import dev.waveclient.input.KeybindDispatcher;
@@ -47,6 +49,7 @@ public final class WaveClient implements ClientModInitializer {
 
 	private ConfigManager config;
 	private boolean hudEditorRequested;
+	private boolean menuRequested;
 
 	/** The running client. Only valid after Fabric has called {@link #onInitializeClient()}. */
 	public static WaveClient get() {
@@ -57,9 +60,10 @@ public final class WaveClient implements ClientModInitializer {
 	public void onInitializeClient() {
 		instance = this;
 
-		// Opened on the next tick rather than inside the key event. The editor itself ignores the
-		// opening press's auto-repeats and release, and closes only on a fresh press-and-release.
+		// Opened on the next tick rather than inside the key event. The screens themselves ignore
+		// the opening press's auto-repeats and release, and close only on a fresh press-and-release.
 		clientSettings.hudEditorKey.onPress(() -> hudEditorRequested = true);
+		clientSettings.modMenuKey.onPress(() -> menuRequested = true);
 		keybinds.registerAll(clientSettings);
 
 		for (Module module : modules.all()) {
@@ -79,6 +83,7 @@ public final class WaveClient implements ClientModInitializer {
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(modules::clearBlocks));
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, buildContext) -> WaveCommand.register(dispatcher, this));
 		HudLayer.register(modules, clientSettings);
+		PauseMenuButton.register(this);
 		fullbright.setLightmapInvalidator(WaveClient::invalidateLightmap);
 
 		LOGGER.info("Wave Client {} initialized with {} modules; config at {}", version(), modules.all().size(), configFile);
@@ -98,6 +103,14 @@ public final class WaveClient implements ClientModInitializer {
 
 			if (client.screen == null && client.level != null && client.player != null) {
 				client.setScreen(new HudEditorScreen(this));
+			}
+		}
+
+		if (menuRequested) {
+			menuRequested = false;
+
+			if (client.screen == null && client.level != null) {
+				client.setScreen(new ModMenuScreen(this, null));
 			}
 		}
 	}

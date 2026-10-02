@@ -14,6 +14,9 @@
 	"entrypoints": {
 		"client": [
 			"dev.waveclient.WaveClient"
+		],
+		"modmenu": [
+			"dev.waveclient.compat.ModMenuIntegration"
 		]
 	},
 	"mixins": [
@@ -27,5 +30,10 @@
 	},
 	"breaks": {
 		"optifabric": "*"
+	},
+	"custom": {
+		"modmenu": {
+			"update_checker": false
+		}
 	}
 }

@@ -46,6 +46,21 @@ class ThemeTokensTest {
 	}
 
 	@Test
+	void radiiAreHalfTheTokenValues() throws IOException {
+		JsonObject radius = JsonParser.parseString(Files.readString(tokens())).getAsJsonObject().getAsJsonObject("radius");
+		assertEquals(radius.get("small").getAsDouble() / 2, Theme.RADIUS_SMALL, 0);
+		assertEquals(radius.get("medium").getAsDouble() / 2, Theme.RADIUS_MEDIUM, 0);
+	}
+
+	@Test
+	void derivedShadesSitBetweenTheirTokens() {
+		assertEquals(Theme.SURFACE, Theme.mix(Theme.SURFACE, Theme.SURFACE_RAISED, 0));
+		assertEquals(Theme.SURFACE_RAISED, Theme.mix(Theme.SURFACE, Theme.SURFACE_RAISED, 1));
+		assertEquals(0xFF, Theme.TRACK >>> 24, "opaque");
+		assertTrue((Theme.SURFACE_HOVER & 0xFF) > (Theme.SURFACE & 0xFF) && (Theme.SURFACE_HOVER & 0xFF) < (Theme.SURFACE_RAISED & 0xFF));
+	}
+
+	@Test
 	void withAlphaKeepsTheColor() {
 		assertEquals(0x805B8CFF, Theme.withAlpha(Theme.ACCENT, 0x80));
 		assertEquals(0x005B8CFF, Theme.withAlpha(Theme.ACCENT, -5));

@@ -13,6 +13,7 @@ import net.minecraft.network.chat.FormattedText;
 import net.minecraft.util.FormattedCharSequence;
 
 import dev.waveclient.WaveClient;
+import dev.waveclient.gui.menu.ModMenuScreen;
 import dev.waveclient.gui.theme.Theme;
 import dev.waveclient.hud.HudEditController;
 import dev.waveclient.hud.HudLayer;
@@ -28,7 +29,7 @@ import dev.waveclient.module.Module;
  */
 public final class HudEditorScreen extends Screen {
 	private static final Component TITLE = Component.literal("HUD editor");
-	private static final String HELP = "Drag to move  \u00b7  Drag the corner or scroll to resize  \u00b7  Arrows nudge (Shift: 10)  \u00b7  R resets  \u00b7  Hold Alt to stop snapping";
+	private static final String HELP = "Drag to move  \u00b7  Drag the corner or scroll to resize  \u00b7  Arrows nudge (Shift: 10)  \u00b7  R resets  \u00b7  Hold Alt to stop snapping  \u00b7  Right-click for settings";
 	private static final String EMPTY = "No HUD elements are showing. Turn one on with /wave toggle fps";
 	private static final int HELP_TOP = 6;
 	private static final int GLFW_KEY_R = 82;
@@ -38,9 +39,9 @@ public final class HudEditorScreen extends Screen {
 	private static final int LABEL_GAP = 3;
 
 	private final WaveClient wave;
-	private final List<HudModule> elements;
-	private final HudEditController controller;
-	private final List<EditorButton> buttons = new ArrayList<>(2);
+	private List<HudModule> elements;
+	private HudEditController controller;
+	private final List<EditorButton> buttons = new ArrayList<>(3);
 	private List<FormattedCharSequence> helpLines = List.of();
 	private List<FormattedCharSequence> emptyLines = List.of();
 	private final ToggleKeyGesture editorKey;
@@ -48,6 +49,12 @@ public final class HudEditorScreen extends Screen {
 	public HudEditorScreen(WaveClient wave) {
 		super(TITLE);
 		this.wave = wave;
+		this.elements = enabledElements();
+		this.controller = new HudEditController(this.elements);
+		this.editorKey = new ToggleKeyGesture(wave.clientSettings().hudEditorKey.isDown());
+	}
+
+	private List<HudModule> enabledElements() {
 		List<HudModule> enabled = new ArrayList<>();
 
 		for (Module module : wave.modules().all()) {
@@ -56,13 +63,19 @@ public final class HudEditorScreen extends Screen {
 			}
 		}
 
-		this.elements = List.copyOf(enabled);
-		this.controller = new HudEditController(this.elements);
-		this.editorKey = new ToggleKeyGesture(wave.clientSettings().hudEditorKey.isDown());
+		return List.copyOf(enabled);
 	}
 
 	@Override
 	protected void init() {
+		// Back from the mod menu, modules may have been turned on or off.
+		List<HudModule> enabled = enabledElements();
+
+		if (!enabled.equals(elements)) {
+			elements = enabled;
+			controller = new HudEditController(elements);
+		}
+
 		controller.setScreenSize(width, height);
 
 		for (HudModule element : elements) {
@@ -77,9 +90,16 @@ public final class HudEditorScreen extends Screen {
 
 		buttons.clear();
 		int y = height - BUTTON_HEIGHT - 10;
-		int left = width / 2 - BUTTON_WIDTH - BUTTON_GAP / 2;
-		buttons.add(new EditorButton("Reset all", left, y, controller::resetAll));
-		buttons.add(new EditorButton("Done", left + BUTTON_WIDTH + BUTTON_GAP, y, this::onClose));
+		int left = width / 2 - (3 * BUTTON_WIDTH + 2 * BUTTON_GAP) / 2;
+		buttons.add(new EditorButton("Mods", left, y, () -> openMenu(null)));
+		buttons.add(new EditorButton("Reset all", left + BUTTON_WIDTH + BUTTON_GAP, y, () -> controller.resetAll()));
+		buttons.add(new EditorButton("Done", left + 2 * (BUTTON_WIDTH + BUTTON_GAP), y, this::onClose));
+	}
+
+	/** Opens the mod menu on top of the editor, at {@code module}'s settings if given. */
+	private void openMenu(Module module) {
+		controller.release();
+		minecraft.setScreen(new ModMenuScreen(wave, this, module));
 	}
 
 	@Override
@@ -159,6 +179,16 @@ public final class HudEditorScreen extends Screen {
 		}
 
 		editorKey.onOtherInput();
+
+		// Right-click an element for its settings.
+		if (event.button() == 1 && controller.dragging() == null) {
+			HudModule element = (HudModule) controller.elementAt(event.x(), event.y());
+
+			if (element != null) {
+				openMenu(element);
+				return true;
+			}
+		}
 
 		if (event.button() == 0) {
 			for (EditorButton button : buttons) {

@@ -25,11 +25,22 @@ repositories {
 	}
 }
 
-// ./gradlew runClient -Pcompat loads Sodium, Lithium and Iris alongside the mod.
+// ./gradlew runClient -Pcompat loads Sodium, Lithium, Iris and Mod Menu alongside the mod.
 // -Pcompat=false (or no flag) leaves them out.
 def compatRuntime = providers.gradleProperty('compat')
 		.map { it.isEmpty() || it.toBoolean() }
 		.getOrElse(false)
+
+sourceSets {
+	// Compile-time stand-ins for Mod Menu's API (see ModMenuApi.java), so builds never need to
+	// download Mod Menu. On the compile classpath only: not in the jar, not at runtime.
+	modmenuApi {
+		compileClasspath += main.compileClasspath
+	}
+	main {
+		compileClasspath += modmenuApi.output
+	}
+}
 
 loom {
 	mods {
@@ -49,6 +60,7 @@ dependencies {
 		modLocalRuntime "maven.modrinth:sodium:${project.sodium_version}"
 		modLocalRuntime "maven.modrinth:lithium:${project.lithium_version}"
 		modLocalRuntime "maven.modrinth:iris:${project.iris_version}"
+		modLocalRuntime "maven.modrinth:modmenu:${project.modmenu_version}"
 		// transitive = false matches exactly what Iris bundles; their POMs would otherwise pull in
 		// the full ANTLR tool and old slf4j/ant versions.
 		localRuntime "org.antlr:antlr4-runtime:${project.iris_antlr4_runtime_version}"

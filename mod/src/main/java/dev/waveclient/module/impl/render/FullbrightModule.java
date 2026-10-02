@@ -16,7 +16,7 @@ import dev.waveclient.setting.SliderSetting;
  * player's setting immediately and a crash can never leave a huge value in options.txt.
  */
 public final class FullbrightModule extends Module {
-	public final SliderSetting brightness = add(new SliderSetting("brightness", "Brightness (%)", 1500, 100, 1500, 50)
+	public final SliderSetting brightness = add(new SliderSetting("brightness", "Brightness", 1500, 100, 1500, 50).unit("%")
 			.describe("How bright the world is lit. 100% matches the vanilla \"Bright\" setting."));
 	public final BooleanSetting shaderPacks = add(new BooleanSetting("shaderPacks", "Brighten shader packs", true)
 			.describe("Report full night vision to Iris shader packs, which many packs use for their own fullbright support."));

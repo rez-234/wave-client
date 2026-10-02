@@ -42,7 +42,7 @@ public final class ZoomModule extends Module {
 	public final KeybindSetting zoomKey = add(new KeybindSetting("zoomKey", "Zoom key", Keybind.key(GLFW_KEY_C))
 			.describe("Zooms in while held (or toggles, depending on Key mode)."));
 	public final EnumSetting<KeyMode> keyMode = add(new EnumSetting<>("keyMode", "Key mode", KeyMode.HOLD));
-	public final SliderSetting factor = add(new SliderSetting("factor", "Zoom factor", 4.0, 1.5, 50.0, 0.5)
+	public final SliderSetting factor = add(new SliderSetting("factor", "Zoom factor", 4.0, 1.5, 50.0, 0.5).unit("x")
 			.describe("How much to magnify. 4x matches OptiFine."));
 	public final BooleanSetting scrollToAdjust = add(new BooleanSetting("scrollToAdjust", "Scroll to adjust", true)
 			.describe("Mouse wheel changes the zoom while zoomed instead of switching hotbar slots."));

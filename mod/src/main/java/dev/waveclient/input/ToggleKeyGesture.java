@@ -23,6 +23,11 @@ public final class ToggleKeyGesture {
 		this.ignoreUntilReleased = heldWhenOpened;
 	}
 
+	/** Whether the key that opened the screen is still held, so its repeats should be ignored. */
+	public boolean isHoldingOpeningPress() {
+		return ignoreUntilReleased;
+	}
+
 	/** The toggle key was pressed (or auto-repeated). */
 	public void onPress() {
 		if (!ignoreUntilReleased && !held) {

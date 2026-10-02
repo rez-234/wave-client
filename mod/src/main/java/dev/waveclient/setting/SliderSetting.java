@@ -2,6 +2,7 @@ package dev.waveclient.setting;
 
 import java.math.BigDecimal;
 import java.util.Locale;
+import java.util.Objects;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonPrimitive;
@@ -14,6 +15,7 @@ public final class SliderSetting extends Setting<SliderSetting> {
 	private final double defaultValue;
 	private final int decimals;
 	private final double roundingFactor;
+	private String unit = "";
 	private double value;
 
 	public SliderSetting(String id, String name, double defaultValue, double min, double max, double step) {
@@ -83,6 +85,24 @@ public final class SliderSetting extends Setting<SliderSetting> {
 		return defaultValue;
 	}
 
+	/**
+	 * Text shown after the number, such as {@code "%"} or {@code "x"}. Include a leading space if
+	 * the unit needs one ({@code " ms"}). Typed input may include it.
+	 */
+	public SliderSetting unit(String unit) {
+		this.unit = Objects.requireNonNull(unit, "unit");
+		return this;
+	}
+
+	public String unit() {
+		return unit;
+	}
+
+	/** How far one arrow-key press moves the value: the step, or 1% of the range if continuous. */
+	public double keyboardStep() {
+		return step > 0 ? step : (max - min) / 100;
+	}
+
 	/** Position of the value within the range, from 0 to 1. Used by slider widgets. */
 	public double fraction() {
 		return (value - min) / (max - min);
@@ -128,8 +148,14 @@ public final class SliderSetting extends Setting<SliderSetting> {
 
 	@Override
 	public boolean parse(String input) {
+		String s = input.trim();
+
+		if (!unit.isBlank() && s.toLowerCase(Locale.ROOT).endsWith(unit.trim().toLowerCase(Locale.ROOT))) {
+			s = s.substring(0, s.length() - unit.trim().length()).trim();
+		}
+
 		try {
-			double parsed = Double.parseDouble(input.trim());
+			double parsed = Double.parseDouble(s);
 
 			if (!Double.isFinite(parsed)) {
 				return false;
@@ -144,6 +170,11 @@ public final class SliderSetting extends Setting<SliderSetting> {
 
 	@Override
 	public String displayValue() {
-		return String.format(Locale.ROOT, "%." + decimals + "f", value);
+		return formatNumber(value) + unit;
+	}
+
+	/** The value without its unit, with as many decimals as the step has. */
+	public String formatNumber(double v) {
+		return String.format(Locale.ROOT, "%." + decimals + "f", v);
 	}
 }
