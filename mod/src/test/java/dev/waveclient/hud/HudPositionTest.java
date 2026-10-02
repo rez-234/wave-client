@@ -120,12 +120,12 @@ class HudPositionTest {
 		p.set(Anchor.BOTTOM_CENTER, 1.23456, -20);
 		p.setScale(1.5);
 		JsonObject json = p.toJson();
-		assertEquals(1.23, json.get("x").getAsDouble(), EPS);
+		assertEquals(1.23456, json.get("x").getAsDouble(), 0, "offsets are saved exactly");
 
 		HudPosition copy = new HudPosition(Anchor.TOP_LEFT, 4, 4);
 		copy.fromJson(json);
 		assertSame(Anchor.BOTTOM_CENTER, copy.anchor());
-		assertEquals(1.23, copy.offsetX(), EPS);
+		assertEquals(1.23456, copy.offsetX(), 0);
 		assertEquals(-20, copy.offsetY(), EPS);
 		assertEquals(1.5, copy.scale(), EPS);
 

@@ -46,6 +46,19 @@ class ToggleKeyGestureTest {
 	}
 
 	@Test
+	void repeatsAfterUseAsAModifierDoNotRearm() {
+		ToggleKeyGesture gesture = new ToggleKeyGesture(false);
+		gesture.onPress();
+		gesture.onOtherInput();
+		gesture.onPress();
+		gesture.onPress();
+		assertFalse(gesture.onRelease(), "pressed during a drag, held past the drop");
+
+		gesture.onPress();
+		assertTrue(gesture.onRelease());
+	}
+
+	@Test
 	void otherInputWithoutTheKeyHeldChangesNothing() {
 		ToggleKeyGesture gesture = new ToggleKeyGesture(false);
 		gesture.onOtherInput();

@@ -221,8 +221,12 @@ public final class HudEditorScreen extends Screen {
 		Keybind key = wave.clientSettings().hudEditorKey.get();
 
 		if (key.matchesKey(event.key())) {
-			if (controller.dragging() == null) {
-				editorKey.onPress();
+			editorKey.onPress();
+
+			// Pressed mid-drag, the key is a modifier, so its repeats after the drop can't
+			// turn the eventual release into a close.
+			if (controller.dragging() != null) {
+				editorKey.onOtherInput();
 			}
 
 			return true;

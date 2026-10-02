@@ -145,8 +145,10 @@ public final class HudPosition {
 	public JsonObject toJson() {
 		JsonObject json = new JsonObject();
 		json.addProperty("anchor", anchor.name());
-		json.addProperty("x", round2(offsetX));
-		json.addProperty("y", round2(offsetY));
+		// Written exactly: a rounded offset can land a centered element on the other side of a
+		// half pixel at another resolution, moving it by one pixel after a restart.
+		json.addProperty("x", offsetX);
+		json.addProperty("y", offsetY);
 		json.addProperty("scale", scale);
 		return json;
 	}
