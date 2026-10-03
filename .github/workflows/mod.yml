@@ -40,3 +40,35 @@ jobs:
       # Dev-only check that runs last, so a Modrinth outage can't cost the build artifact.
       - name: Check compat mods resolve (Sodium, Lithium, Iris and its libraries, Mod Menu)
         run: ./gradlew resolveRuntimeClasspath compileJava -Pcompat --console=plain
+
+  # Boots the real game under a virtual display: every mixin must apply for it to start, and
+  # WaveClientGameTest then checks the hooks and takes screenshots (uploaded as an artifact).
+  client-test:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: mod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Install a virtual display and software OpenGL
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri
+      - name: Run the client game test
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" ./gradlew runClientGameTest --console=plain
+      - name: Upload screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: client-gametest
+          path: |
+            mod/build/clientgametest/screenshots/
+            mod/build/clientgametest/logs/
+            mod/build/clientgametest/crash-reports/
+          if-no-files-found: ignore

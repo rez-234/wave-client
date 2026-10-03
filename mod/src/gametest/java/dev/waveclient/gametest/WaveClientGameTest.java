@@ -1,0 +1,177 @@
+package dev.waveclient.gametest;
+
+import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
+import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
+import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
+import net.minecraft.client.CameraType;
+import org.lwjgl.glfw.GLFW;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import dev.waveclient.WaveClient;
+import dev.waveclient.gui.menu.ModMenuScreen;
+import dev.waveclient.gui.screen.HudEditorScreen;
+import dev.waveclient.input.ClickInput;
+import dev.waveclient.input.Keybind;
+import dev.waveclient.mixin.OptionsAccessor;
+import dev.waveclient.module.Module;
+import dev.waveclient.module.impl.camera.CameraHooks;
+
+/**
+ * Boots the real game with every module on, goes through the hooks that only a running client
+ * can check, and saves screenshots of the HUD, the HUD editor and the mod menu. A mixin that
+ * doesn't apply stops the game from starting, so getting here at all checks every target.
+ *
+ * <p>Run with {@code ./gradlew runClientGameTest} (CI runs it under a virtual display).
+ */
+public final class WaveClientGameTest implements FabricClientGameTest {
+	private static final Logger LOGGER = LoggerFactory.getLogger("Wave Client game test");
+
+	@Override
+	public void runTest(ClientGameTestContext context) {
+		context.runOnClient(client -> {
+			for (Module module : WaveClient.get().modules().all()) {
+				module.setEnabled(true);
+			}
+		});
+
+		try (TestSingleplayerContext singleplayer = context.worldBuilder().create()) {
+			singleplayer.getClientWorld().waitForChunksRender();
+			// Armor and effects, so those HUD elements have something to show.
+			singleplayer.getServer().runCommand("item replace entity @a armor.head with minecraft:iron_helmet");
+			singleplayer.getServer().runCommand("item replace entity @a armor.chest with minecraft:diamond_chestplate");
+			singleplayer.getServer().runCommand("item replace entity @a weapon.mainhand with minecraft:iron_sword");
+			singleplayer.getServer().runCommand("effect give @a minecraft:speed 90 1");
+			singleplayer.getServer().runCommand("effect give @a minecraft:night_vision 8 0");
+			context.waitTicks(10);
+			context.takeScreenshot("wave-hud");
+
+			toggleSprintAndSneak(context);
+			clicksPerSecond(context);
+			zoom(context);
+			freelook(context);
+			snaplookAndPerspectiveKey(context);
+			screens(context);
+			noModuleFailed(context);
+		}
+	}
+
+	private static void toggleSprintAndSneak(ClientGameTestContext context) {
+		context.runOnClient(client -> WaveClient.get().toggleSprint().toggleSneak.set(true));
+
+		context.getInput().pressKey(options -> options.keySprint);
+		context.waitTicks(2);
+		check(context.computeOnClient(client -> client.player.input.keyPresses.sprint()), "toggle sprint: sprint stays on after the key is released");
+		context.getInput().pressKey(options -> options.keySprint);
+		context.waitTicks(2);
+		check(!context.computeOnClient(client -> client.player.input.keyPresses.sprint()), "toggle sprint: a second press turns it off");
+
+		context.getInput().pressKey(options -> options.keyShift);
+		context.waitTicks(2);
+		check(context.computeOnClient(client -> client.player.input.keyPresses.shift()), "toggle sneak: sneak stays on after the key is released");
+		context.takeScreenshot("wave-toggle-sneak");
+		context.getInput().pressKey(options -> options.keyShift);
+		context.waitTicks(2);
+		check(!context.computeOnClient(client -> client.player.input.keyPresses.shift()), "toggle sneak: a second press turns it off");
+	}
+
+	private static void clicksPerSecond(ClientGameTestContext context) {
+		context.getInput().pressMouse(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+		context.getInput().pressMouse(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
+		context.waitTick();
+		int left = context.computeOnClient(client -> WaveClient.get().clickInput().left(ClickInput.Source.MOUSE_BUTTONS));
+		int right = context.computeOnClient(client -> WaveClient.get().clickInput().right(ClickInput.Source.MOUSE_BUTTONS));
+		check(left >= 1, "CPS: a left click is counted (got " + left + ")");
+		check(right >= 1, "CPS: a right click is counted (got " + right + ")");
+	}
+
+	private static void zoom(ClientGameTestContext context) {
+		context.getInput().holdKey(GLFW.GLFW_KEY_C);
+		context.waitTicks(5);
+		check(context.computeOnClient(client -> WaveClient.get().zoom().isZooming()), "zoom: holding C zooms");
+		context.takeScreenshot("wave-zoom");
+		context.getInput().releaseKey(GLFW.GLFW_KEY_C);
+		context.waitTicks(5);
+		check(!context.computeOnClient(client -> WaveClient.get().zoom().isZooming()), "zoom: releasing C stops");
+	}
+
+	private static void freelook(ClientGameTestContext context) {
+		float yawBefore = context.computeOnClient(client -> client.player.getYRot());
+		context.getInput().holdAlt();
+		context.waitTicks(2);
+		check(context.computeOnClient(client -> CameraHooks.freelook), "freelook: holding Left Alt starts it");
+		check(context.computeOnClient(client -> client.options.getCameraType()) == CameraType.THIRD_PERSON_BACK, "freelook: the view is third person");
+		check(rawPerspective(context) == CameraType.FIRST_PERSON, "freelook: the perspective option is not written");
+
+		context.getInput().moveCursor(300, 0);
+		context.waitTicks(3);
+		float cameraYaw = context.computeOnClient(client -> client.gameRenderer.getMainCamera().yRot());
+		float hookYaw = context.computeOnClient(client -> CameraHooks.yaw);
+		check(context.computeOnClient(client -> client.player.getYRot()) == yawBefore, "freelook: moving the mouse doesn't turn the player");
+		check(Math.abs(cameraYaw - hookYaw) < 0.01F, "freelook: the camera uses the freelook angle (" + cameraYaw + " vs " + hookYaw + ")");
+		LOGGER.info("Freelook turned the camera by {} degrees", hookYaw - yawBefore);
+		context.takeScreenshot("wave-freelook");
+
+		context.getInput().releaseAlt();
+		context.waitTicks(2);
+		check(!context.computeOnClient(client -> CameraHooks.freelook), "freelook: releasing Left Alt ends it");
+		check(context.computeOnClient(client -> client.options.getCameraType()) == CameraType.FIRST_PERSON, "freelook: back to first person");
+	}
+
+	private static void snaplookAndPerspectiveKey(ClientGameTestContext context) {
+		context.runOnClient(client -> WaveClient.get().snaplook().snaplookKey.set(Keybind.key(GLFW.GLFW_KEY_V)));
+
+		context.getInput().holdKey(GLFW.GLFW_KEY_V);
+		context.waitTicks(2);
+		check(context.computeOnClient(client -> client.options.getCameraType()) == CameraType.THIRD_PERSON_FRONT, "snaplook: holding the key shows the front view");
+		check(rawPerspective(context) == CameraType.FIRST_PERSON, "snaplook: the perspective option is not written");
+		context.takeScreenshot("wave-snaplook");
+
+		// F5 changes the real perspective and ends snaplook.
+		context.getInput().pressKey(options -> options.keyTogglePerspective);
+		context.waitTicks(2);
+		check(rawPerspective(context) == CameraType.THIRD_PERSON_BACK, "F5 during snaplook cycles the real perspective (got " + rawPerspective(context) + ")");
+		check(context.computeOnClient(client -> client.options.getCameraType()) == CameraType.THIRD_PERSON_BACK, "F5 during snaplook ends the override");
+		context.getInput().releaseKey(GLFW.GLFW_KEY_V);
+		context.waitTicks(2);
+
+		context.getInput().pressKey(options -> options.keyTogglePerspective);
+		context.getInput().pressKey(options -> options.keyTogglePerspective);
+		context.waitTicks(2);
+		check(rawPerspective(context) == CameraType.FIRST_PERSON, "F5 cycles back to first person (got " + rawPerspective(context) + ")");
+	}
+
+	private static void screens(ClientGameTestContext context) {
+		context.setScreen(() -> new HudEditorScreen(WaveClient.get()));
+		context.waitTicks(2);
+		context.takeScreenshot("wave-hud-editor");
+
+		context.setScreen(() -> new ModMenuScreen(WaveClient.get(), null));
+		context.waitTicks(2);
+		context.takeScreenshot("wave-mod-menu");
+
+		context.setScreen(() -> null);
+		context.waitTicks(2);
+	}
+
+	/** A module that throws while ticking or drawing is turned off, so every one should still be on. */
+	private static void noModuleFailed(ClientGameTestContext context) {
+		context.runOnClient(client -> {
+			for (Module module : WaveClient.get().modules().all()) {
+				check(module.isEnabled(), module.id() + " was turned off by an error; see the log");
+			}
+		});
+	}
+
+	private static CameraType rawPerspective(ClientGameTestContext context) {
+		return context.computeOnClient(client -> ((OptionsAccessor) client.options).waveclient$rawCameraType());
+	}
+
+	private static void check(boolean condition, String what) {
+		if (!condition) {
+			throw new AssertionError(what);
+		}
+
+		LOGGER.info("OK: {}", what);
+	}
+}

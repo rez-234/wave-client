@@ -40,12 +40,32 @@ sourceSets {
 	main {
 		compileClasspath += modmenuApi.output
 	}
+	// The client game test CI boots the game with. A mod of its own, never in the release jar.
+	gametest {
+		compileClasspath += main.compileClasspath + main.output
+		runtimeClasspath += main.runtimeClasspath + main.output
+	}
 }
 
 loom {
 	mods {
 		"waveclient" {
 			sourceSet sourceSets.main
+		}
+		"waveclient-gametest" {
+			sourceSet sourceSets.gametest
+		}
+	}
+
+	runs {
+		// ./gradlew runClientGameTest starts the game, runs WaveClientGameTest and exits; a failed
+		// check fails the task. Needs a display: CI runs it under xvfb.
+		clientGameTest {
+			client()
+			name = 'Client Game Test'
+			source sourceSets.gametest
+			vmArg '-Dfabric.client.gametest'
+			runDir 'build/clientgametest'
 		}
 	}
 }

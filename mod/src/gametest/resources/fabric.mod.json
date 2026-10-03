@@ -1,0 +1,17 @@
+{
+	"schemaVersion": 1,
+	"id": "waveclient-gametest",
+	"version": "1.0.0",
+	"name": "Wave Client game test",
+	"description": "Boots the game in CI and checks the hooks that only a running client can.",
+	"environment": "client",
+	"entrypoints": {
+		"fabric-client-gametest": [
+			"dev.waveclient.gametest.WaveClientGameTest"
+		]
+	},
+	"depends": {
+		"waveclient": "*",
+		"fabric-client-gametest-api-v1": "*"
+	}
+}
