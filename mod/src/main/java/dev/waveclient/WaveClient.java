@@ -40,7 +40,10 @@ import dev.waveclient.module.impl.hud.KeystrokesModule;
 import dev.waveclient.module.impl.hud.PingModule;
 import dev.waveclient.module.impl.hud.PotionEffectsModule;
 import dev.waveclient.module.impl.movement.ToggleSprintModule;
+import dev.waveclient.module.impl.render.CrosshairModule;
 import dev.waveclient.module.impl.render.FullbrightModule;
+import dev.waveclient.module.impl.render.MotionBlurModule;
+import dev.waveclient.module.impl.render.MotionBlurRenderer;
 
 public final class WaveClient implements ClientModInitializer {
 	public static final String MOD_ID = "waveclient";
@@ -56,6 +59,8 @@ public final class WaveClient implements ClientModInitializer {
 
 	// Registration order is the order modules appear in lists and the config file.
 	private final FullbrightModule fullbright = modules.register(new FullbrightModule());
+	private final CrosshairModule crosshair = modules.register(new CrosshairModule());
+	private final MotionBlurModule motionBlur = modules.register(new MotionBlurModule());
 	private final ZoomModule zoom = modules.register(new ZoomModule());
 	private final FpsModule fps = modules.register(new FpsModule());
 	private final CoordinatesModule coordinates = modules.register(new CoordinatesModule());
@@ -69,6 +74,8 @@ public final class WaveClient implements ClientModInitializer {
 	private final ToggleSprintModule toggleSprint = modules.register(new ToggleSprintModule());
 	private final FreelookModule freelook = modules.register(new FreelookModule());
 	private final SnaplookModule snaplook = modules.register(new SnaplookModule());
+
+	private final MotionBlurRenderer motionBlurRenderer = new MotionBlurRenderer(motionBlur);
 
 	private ConfigManager config;
 	private boolean hudEditorRequested;
@@ -107,8 +114,10 @@ public final class WaveClient implements ClientModInitializer {
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, buildContext) -> WaveCommand.register(dispatcher, this));
 		HudLayer.register(modules, clientSettings);
 		VanillaEffectsGate.register(potionEffects);
+		CrosshairModule.register(crosshair);
 		PauseMenuButton.register(this);
 		fullbright.setLightmapInvalidator(WaveClient::invalidateLightmap);
+		motionBlur.setResourceReleaser(motionBlurRenderer::requestRelease);
 
 		LOGGER.info("Wave Client {} initialized with {} modules; config at {}", version(), modules.all().size(), configFile);
 	}
@@ -181,6 +190,18 @@ public final class WaveClient implements ClientModInitializer {
 
 	public FullbrightModule fullbright() {
 		return fullbright;
+	}
+
+	public CrosshairModule crosshair() {
+		return crosshair;
+	}
+
+	public MotionBlurModule motionBlur() {
+		return motionBlur;
+	}
+
+	public MotionBlurRenderer motionBlurRenderer() {
+		return motionBlurRenderer;
 	}
 
 	public ZoomModule zoom() {

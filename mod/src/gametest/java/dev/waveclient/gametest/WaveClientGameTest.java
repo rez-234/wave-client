@@ -45,6 +45,8 @@ public final class WaveClientGameTest implements FabricClientGameTest {
 			singleplayer.getServer().runCommand("effect give @a minecraft:night_vision 8 0");
 			context.waitTicks(10);
 			context.takeScreenshot("wave-hud");
+			check(context.computeOnClient(client -> WaveClient.get().motionBlurRenderer().isRunning()),
+					"motion blur: the shader compiled and frames are being blended");
 
 			toggleSprintAndSneak(context);
 			clicksPerSecond(context);
@@ -103,6 +105,8 @@ public final class WaveClientGameTest implements FabricClientGameTest {
 		check(context.computeOnClient(client -> client.options.getCameraType()) == CameraType.THIRD_PERSON_BACK, "freelook: the view is third person");
 		check(rawPerspective(context) == CameraType.FIRST_PERSON, "freelook: the perspective option is not written");
 
+		// Mouse movement only turns anything while the game has captured the mouse.
+		context.runOnClient(client -> client.mouseHandler.grabMouse());
 		context.getInput().moveCursor(300, 0);
 		context.waitTicks(3);
 		float cameraYaw = context.computeOnClient(client -> client.gameRenderer.getMainCamera().yRot());
@@ -158,7 +162,7 @@ public final class WaveClientGameTest implements FabricClientGameTest {
 	private static void noModuleFailed(ClientGameTestContext context) {
 		context.runOnClient(client -> {
 			for (Module module : WaveClient.get().modules().all()) {
-				check(module.isEnabled(), module.id() + " was turned off by an error; see the log");
+				check(module.isEnabled(), module.id() + " is still on (a module that throws is turned off; see the log)");
 			}
 		});
 	}

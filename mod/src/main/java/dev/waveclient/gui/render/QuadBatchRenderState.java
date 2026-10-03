@@ -16,12 +16,32 @@ import org.joml.Matrix3x2f;
  * is dozens of small rectangles, so drawing each with {@code GuiGraphics.fill} made a full menu
  * cost tens of thousands of placement checks per frame. Batched, a shape is one element.
  *
- * @param quads {@code x0, y0, x1, y1, topColor, bottomColor} per rectangle, in {@code pose}
- *              space, with x0 &lt; x1 and y0 &lt; y1 (the GUI pipeline culls back faces)
+ * <p>Elements are only read while drawing, so one built from arrays that are never changed
+ * afterwards can be submitted again on later frames.
+ *
+ * @param pipeline {@link RenderPipelines#GUI}, or another pipeline with the same vertex format
+ *                 such as {@link RenderPipelines#GUI_INVERT}
+ * @param quads    {@code x0, y0, x1, y1, topColor, bottomColor} per rectangle, in {@code pose}
+ *                 space, with x0 &lt; x1 and y0 &lt; y1 (the GUI pipeline culls back faces)
  */
-record QuadBatchRenderState(Matrix3x2f pose, int[] quads, int count, ScreenRectangle scissorArea, ScreenRectangle bounds)
-		implements GuiElementRenderState {
-	static final int STRIDE = 6;
+public record QuadBatchRenderState(RenderPipeline pipeline, Matrix3x2f pose, int[] quads, int count, ScreenRectangle scissorArea,
+		ScreenRectangle bounds) implements GuiElementRenderState {
+	public static final int STRIDE = 6;
+
+	/**
+	 * An element for {@code quads} whose bounds are computed from their extent, or {@code null}
+	 * when it lies entirely outside {@code scissor}.
+	 */
+	public static QuadBatchRenderState of(RenderPipeline pipeline, Matrix3x2f pose, int[] quads, int count, ScreenRectangle scissor,
+			int minX, int minY, int maxX, int maxY) {
+		ScreenRectangle bounds = new ScreenRectangle(minX, minY, maxX - minX, maxY - minY).transformMaxBounds(pose);
+
+		if (scissor != null) {
+			bounds = scissor.intersection(bounds);
+		}
+
+		return bounds != null ? new QuadBatchRenderState(pipeline, pose, quads, count, scissor, bounds) : null;
+	}
 
 	@Override
 	public void buildVertices(VertexConsumer consumer) {
@@ -39,11 +59,6 @@ record QuadBatchRenderState(Matrix3x2f pose, int[] quads, int count, ScreenRecta
 			consumer.addVertexWith2DPose(pose, x1, y1).setColor(bottom);
 			consumer.addVertexWith2DPose(pose, x1, y0).setColor(top);
 		}
-	}
-
-	@Override
-	public RenderPipeline pipeline() {
-		return RenderPipelines.GUI;
 	}
 
 	@Override

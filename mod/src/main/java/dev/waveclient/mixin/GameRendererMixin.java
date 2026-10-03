@@ -3,6 +3,7 @@ package dev.waveclient.mixin;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import com.llamalad7.mixinextras.sugar.Local;
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.world.entity.LivingEntity;
@@ -11,6 +12,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import dev.waveclient.WaveClient;
@@ -104,5 +106,20 @@ public abstract class GameRendererMixin {
 
 		ZoomModule zoom = wave.zoom();
 		return zoom.isActive() ? zoom : null;
+	}
+
+	/**
+	 * Motion blur, right after the world (with the hand, screen overlays and glowing outlines)
+	 * is drawn and before vanilla's spectator effect and all GUI drawing, so the HUD, chat and
+	 * menus stay sharp. Only reached when a world is being rendered.
+	 */
+	@Inject(method = "render(Lnet/minecraft/client/DeltaTracker;Z)V",
+			at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/LevelRenderer;doEntityOutline()V", shift = At.Shift.AFTER))
+	private void waveclient$motionBlur(DeltaTracker deltaTracker, boolean renderLevel, CallbackInfo ci) {
+		WaveClient wave = WaveClient.get();
+
+		if (wave != null) {
+			wave.motionBlurRenderer().afterWorld();
+		}
 	}
 }

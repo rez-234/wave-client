@@ -5,7 +5,7 @@ import java.util.Arrays;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.navigation.ScreenRectangle;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.FontDescription;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.Identifier;
@@ -385,17 +385,13 @@ public final class Painter {
 		}
 
 		Matrix3x2f pose = new Matrix3x2f(graphics.pose()).scale(1f / scale);
-		ScreenRectangle bounds = new ScreenRectangle(minX, minY, maxX - minX, maxY - minY).transformMaxBounds(pose);
-		ScreenRectangle scissor = graphics.scissorStack.peek();
+		// The element is kept until the frame is drawn, so it needs its own copy.
+		int[] copy = Arrays.copyOf(quads, count * QuadBatchRenderState.STRIDE);
+		QuadBatchRenderState element = QuadBatchRenderState.of(RenderPipelines.GUI, pose, copy, count, graphics.scissorStack.peek(),
+				minX, minY, maxX, maxY);
 
-		if (scissor != null) {
-			bounds = scissor.intersection(bounds);
-		}
-
-		if (bounds != null) {
-			// The element is kept until the frame is drawn, so it needs its own copy.
-			int[] copy = Arrays.copyOf(quads, count * QuadBatchRenderState.STRIDE);
-			graphics.guiRenderState.submitGuiElement(new QuadBatchRenderState(pose, copy, count, scissor, bounds));
+		if (element != null) {
+			graphics.guiRenderState.submitGuiElement(element);
 		}
 
 		count = 0;
