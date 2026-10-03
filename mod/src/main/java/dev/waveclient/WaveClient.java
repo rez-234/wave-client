@@ -30,6 +30,7 @@ import dev.waveclient.module.ServerPolicy;
 import dev.waveclient.module.impl.camera.FreelookModule;
 import dev.waveclient.module.impl.camera.SnaplookModule;
 import dev.waveclient.module.impl.camera.ZoomModule;
+import dev.waveclient.module.impl.chat.ChatModule;
 import dev.waveclient.module.impl.hud.ArmorStatusModule;
 import dev.waveclient.module.impl.hud.ClockModule;
 import dev.waveclient.module.impl.hud.CoordinatesModule;
@@ -74,6 +75,7 @@ public final class WaveClient implements ClientModInitializer {
 	private final ToggleSprintModule toggleSprint = modules.register(new ToggleSprintModule());
 	private final FreelookModule freelook = modules.register(new FreelookModule());
 	private final SnaplookModule snaplook = modules.register(new SnaplookModule());
+	private final ChatModule chat = modules.register(new ChatModule());
 
 	private final MotionBlurRenderer motionBlurRenderer = new MotionBlurRenderer(motionBlur);
 
@@ -258,5 +260,9 @@ public final class WaveClient implements ClientModInitializer {
 
 	public SnaplookModule snaplook() {
 		return snaplook;
+	}
+
+	public ChatModule chat() {
+		return chat;
 	}
 }

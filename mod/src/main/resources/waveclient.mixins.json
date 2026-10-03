@@ -5,8 +5,12 @@
 	"compatibilityLevel": "JAVA_21",
 	"client": [
 		"CameraMixin",
+		"ChatComponentAccessor",
+		"ChatComponentMixin",
+		"ChatScreenMixin",
 		"GameRendererMixin",
 		"GuiAccessor",
+		"GuiMixin",
 		"KeyboardHandlerMixin",
 		"KeyboardInputMixin",
 		"LightTextureAccessor",

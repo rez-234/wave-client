@@ -4,6 +4,12 @@ import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.minecraft.client.CameraType;
+import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.client.input.InputQuirks;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.MouseButtonInfo;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,9 +19,11 @@ import dev.waveclient.gui.menu.ModMenuScreen;
 import dev.waveclient.gui.screen.HudEditorScreen;
 import dev.waveclient.input.ClickInput;
 import dev.waveclient.input.Keybind;
+import dev.waveclient.mixin.ChatComponentAccessor;
 import dev.waveclient.mixin.OptionsAccessor;
 import dev.waveclient.module.Module;
 import dev.waveclient.module.impl.camera.CameraHooks;
+import dev.waveclient.module.impl.chat.ChatLines;
 
 /**
  * Boots the real game with every module on, goes through the hooks that only a running client
@@ -26,6 +34,7 @@ import dev.waveclient.module.impl.camera.CameraHooks;
  */
 public final class WaveClientGameTest implements FabricClientGameTest {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Wave Client game test");
+	private static final String CHAT_TEST_MESSAGE = "wave-chat-test";
 
 	@Override
 	public void runTest(ClientGameTestContext context) {
@@ -53,9 +62,38 @@ public final class WaveClientGameTest implements FabricClientGameTest {
 			zoom(context);
 			freelook(context);
 			snaplookAndPerspectiveKey(context);
+			chat(context);
 			screens(context);
 			noModuleFailed(context);
 		}
+
+		check(context.computeOnClient(client -> ((ChatComponentAccessor) client.gui.getChat()).waveclient$allMessages().stream()
+				.anyMatch(message -> message.content().getString().endsWith(CHAT_TEST_MESSAGE))), "keep chat: messages stay after leaving the world");
+	}
+
+	private static void chat(ClientGameTestContext context) {
+		context.runOnClient(client -> client.gui.getChat().addMessage(Component.literal(CHAT_TEST_MESSAGE)));
+		context.waitTick();
+		String newest = context.computeOnClient(client -> ((ChatComponentAccessor) client.gui.getChat()).waveclient$allMessages().get(0).content().getString());
+		check(newest.matches("\\[\\d{2}:\\d{2}\\] " + CHAT_TEST_MESSAGE), "timestamps: a new message is stamped (got \"" + newest + "\")");
+
+		context.setScreen(() -> new ChatScreen("", false));
+		context.waitTicks(2);
+		context.takeScreenshot("wave-chat");
+		// Ctrl/Cmd-click the newest message: the bottom row of the chat.
+		boolean handled = context.computeOnClient(client -> {
+			ChatComponentAccessor chat = (ChatComponentAccessor) client.gui.getChat();
+			double scale = chat.waveclient$scale();
+			int bottom = Mth.floor((client.getWindow().getGuiScaledHeight() - 40) / scale);
+			double y = (bottom - ChatLines.rowHeight(client.options.chatLineSpacing().get()) / 2.0) * scale;
+			MouseButtonEvent click = new MouseButtonEvent(10, y, new MouseButtonInfo(GLFW.GLFW_MOUSE_BUTTON_LEFT, InputQuirks.EDIT_SHORTCUT_KEY_MODIFIER));
+			return client.screen.mouseClicked(click, false);
+		});
+		check(handled, "copy messages: Ctrl-click on a message is used");
+		String copied = context.computeOnClient(client -> WaveClient.get().chat().lastCopied());
+		check(CHAT_TEST_MESSAGE.equals(copied), "copy messages: the text is copied without the timestamp (got \"" + copied + "\")");
+		context.setScreen(() -> null);
+		context.waitTick();
 	}
 
 	private static void toggleSprintAndSneak(ClientGameTestContext context) {
