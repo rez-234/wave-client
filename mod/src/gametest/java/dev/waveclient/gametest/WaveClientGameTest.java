@@ -167,15 +167,18 @@ public final class WaveClientGameTest implements FabricClientGameTest {
 		check(context.computeOnClient(client -> client.options.getCameraType()) == CameraType.THIRD_PERSON_BACK, "freelook: the view is third person");
 		check(rawPerspective(context) == CameraType.FIRST_PERSON, "freelook: the perspective option is not written");
 
-		// Mouse movement only turns anything while the game has captured the mouse.
+		// Mouse movement only turns anything while the game has captured the mouse, and the game
+		// ignores the first movement after capturing it.
 		context.runOnClient(client -> client.mouseHandler.grabMouse());
+		context.getInput().moveCursor(1, 0);
+		context.waitTick();
 		context.getInput().moveCursor(300, 0);
 		context.waitTicks(3);
 		float cameraYaw = context.computeOnClient(client -> client.gameRenderer.getMainCamera().yRot());
 		float hookYaw = context.computeOnClient(client -> CameraHooks.yaw);
+		check(Math.abs(hookYaw - yawBefore) > 1, "freelook: moving the mouse turns the camera (by " + (hookYaw - yawBefore) + " degrees)");
 		check(context.computeOnClient(client -> client.player.getYRot()) == yawBefore, "freelook: moving the mouse doesn't turn the player");
 		check(Math.abs(cameraYaw - hookYaw) < 0.01F, "freelook: the camera uses the freelook angle (" + cameraYaw + " vs " + hookYaw + ")");
-		LOGGER.info("Freelook turned the camera by {} degrees", hookYaw - yawBefore);
 		context.takeScreenshot("wave-freelook");
 
 		context.getInput().releaseAlt();
