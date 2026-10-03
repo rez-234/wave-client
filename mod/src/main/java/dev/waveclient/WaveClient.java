@@ -8,6 +8,7 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallba
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ServerData;
@@ -20,7 +21,7 @@ import dev.waveclient.gui.PauseMenuButton;
 import dev.waveclient.gui.menu.ModMenuScreen;
 import dev.waveclient.gui.screen.HudEditorScreen;
 import dev.waveclient.hud.HudLayer;
-import dev.waveclient.hud.VanillaEffectsGate;
+import dev.waveclient.hud.VanillaElementGate;
 import dev.waveclient.input.ClickInput;
 import dev.waveclient.input.KeybindDispatcher;
 import dev.waveclient.mixin.LightTextureAccessor;
@@ -40,9 +41,11 @@ import dev.waveclient.module.impl.hud.FpsModule;
 import dev.waveclient.module.impl.hud.KeystrokesModule;
 import dev.waveclient.module.impl.hud.PingModule;
 import dev.waveclient.module.impl.hud.PotionEffectsModule;
+import dev.waveclient.module.impl.hud.ScoreboardModule;
 import dev.waveclient.module.impl.movement.ToggleSprintModule;
 import dev.waveclient.module.impl.render.CrosshairModule;
 import dev.waveclient.module.impl.render.FullbrightModule;
+import dev.waveclient.module.impl.render.ItemPhysicsModule;
 import dev.waveclient.module.impl.render.MotionBlurModule;
 import dev.waveclient.module.impl.render.MotionBlurRenderer;
 
@@ -62,6 +65,7 @@ public final class WaveClient implements ClientModInitializer {
 	private final FullbrightModule fullbright = modules.register(new FullbrightModule());
 	private final CrosshairModule crosshair = modules.register(new CrosshairModule());
 	private final MotionBlurModule motionBlur = modules.register(new MotionBlurModule());
+	private final ItemPhysicsModule itemPhysics = modules.register(new ItemPhysicsModule());
 	private final ZoomModule zoom = modules.register(new ZoomModule());
 	private final FpsModule fps = modules.register(new FpsModule());
 	private final CoordinatesModule coordinates = modules.register(new CoordinatesModule());
@@ -72,6 +76,7 @@ public final class WaveClient implements ClientModInitializer {
 	private final KeystrokesModule keystrokes = modules.register(new KeystrokesModule());
 	private final ArmorStatusModule armorStatus = modules.register(new ArmorStatusModule());
 	private final PotionEffectsModule potionEffects = modules.register(new PotionEffectsModule());
+	private final ScoreboardModule scoreboard = modules.register(new ScoreboardModule());
 	private final ToggleSprintModule toggleSprint = modules.register(new ToggleSprintModule());
 	private final FreelookModule freelook = modules.register(new FreelookModule());
 	private final SnaplookModule snaplook = modules.register(new SnaplookModule());
@@ -115,7 +120,8 @@ public final class WaveClient implements ClientModInitializer {
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(modules::clearBlocks));
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, buildContext) -> WaveCommand.register(dispatcher, this));
 		HudLayer.register(modules, clientSettings);
-		VanillaEffectsGate.register(potionEffects);
+		VanillaElementGate.register(VanillaHudElements.STATUS_EFFECTS, potionEffects::hidesVanillaIcons);
+		VanillaElementGate.register(VanillaHudElements.SCOREBOARD, scoreboard::hidesVanilla);
 		CrosshairModule.register(crosshair);
 		PauseMenuButton.register(this);
 		fullbright.setLightmapInvalidator(WaveClient::invalidateLightmap);
@@ -264,5 +270,13 @@ public final class WaveClient implements ClientModInitializer {
 
 	public ChatModule chat() {
 		return chat;
+	}
+
+	public ScoreboardModule scoreboard() {
+		return scoreboard;
+	}
+
+	public ItemPhysicsModule itemPhysics() {
+		return itemPhysics;
 	}
 }

@@ -1,5 +1,7 @@
 package dev.waveclient.gametest;
 
+import java.util.Map;
+
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
@@ -24,6 +26,7 @@ import dev.waveclient.mixin.OptionsAccessor;
 import dev.waveclient.module.Module;
 import dev.waveclient.module.impl.camera.CameraHooks;
 import dev.waveclient.module.impl.chat.ChatLines;
+import dev.waveclient.module.impl.hud.ScoreboardLayout;
 
 /**
  * Boots the real game with every module on, goes through the hooks that only a running client
@@ -44,7 +47,7 @@ public final class WaveClientGameTest implements FabricClientGameTest {
 			}
 		});
 
-		try (TestSingleplayerContext singleplayer = context.worldBuilder().create()) {
+		try (TestSingleplayerContext singleplayer = createWorld(context)) {
 			singleplayer.getClientWorld().waitForChunksRender();
 			// Armor and effects, so those HUD elements have something to show.
 			singleplayer.getServer().runCommand("item replace entity @a armor.head with minecraft:iron_helmet");
@@ -63,6 +66,7 @@ public final class WaveClientGameTest implements FabricClientGameTest {
 			freelook(context);
 			snaplookAndPerspectiveKey(context);
 			chat(context);
+			scoreboardAndItems(context, singleplayer);
 			screens(context);
 			noModuleFailed(context);
 		}
@@ -94,6 +98,26 @@ public final class WaveClientGameTest implements FabricClientGameTest {
 		check(CHAT_TEST_MESSAGE.equals(copied), "copy messages: the text is copied without the timestamp (got \"" + copied + "\")");
 		context.setScreen(() -> null);
 		context.waitTick();
+	}
+
+	/** Creates the test world; if loading times out, logs every thread's stack to show where it stalled. */
+	private static TestSingleplayerContext createWorld(ClientGameTestContext context) {
+		try {
+			return context.worldBuilder().create();
+		} catch (AssertionError e) {
+			StringBuilder dump = new StringBuilder("World loading timed out. Threads:\n");
+
+			for (Map.Entry<Thread, StackTraceElement[]> thread : Thread.getAllStackTraces().entrySet()) {
+				dump.append('"').append(thread.getKey().getName()).append("\" ").append(thread.getKey().getState()).append('\n');
+
+				for (StackTraceElement frame : thread.getValue()) {
+					dump.append("    at ").append(frame).append('\n');
+				}
+			}
+
+			LOGGER.error(dump.toString());
+			throw e;
+		}
 	}
 
 	private static void toggleSprintAndSneak(ClientGameTestContext context) {
@@ -181,6 +205,20 @@ public final class WaveClientGameTest implements FabricClientGameTest {
 		context.getInput().pressKey(options -> options.keyTogglePerspective);
 		context.waitTicks(2);
 		check(rawPerspective(context) == CameraType.FIRST_PERSON, "F5 cycles back to first person (got " + rawPerspective(context) + ")");
+	}
+
+	private static void scoreboardAndItems(ClientGameTestContext context, TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runCommand("scoreboard objectives add wave dummy \"Wave test\"");
+		singleplayer.getServer().runCommand("scoreboard objectives setdisplay sidebar wave");
+		singleplayer.getServer().runCommand("scoreboard players set Alpha wave 3");
+		singleplayer.getServer().runCommand("scoreboard players set Beta wave 7");
+		// Dropped items in front of the player, for item physics.
+		singleplayer.getServer().runCommand("summon item ~1 ~1 ~3 {Item:{id:\"minecraft:diamond\",count:1}}");
+		singleplayer.getServer().runCommand("summon item ~-1 ~2 ~3 {Item:{id:\"minecraft:oak_planks\",count:5}}");
+		context.waitTicks(40);
+		check(context.computeOnClient(client -> WaveClient.get().scoreboard().height()) == ScoreboardLayout.height(2),
+				"scoreboard: the sidebar shows the objective's two lines");
+		context.takeScreenshot("wave-scoreboard-items");
 	}
 
 	private static void screens(ClientGameTestContext context) {
