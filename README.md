@@ -50,6 +50,11 @@ The dev game directory is `mod/run/`, and the mod's config is written to
 | Toggle Sprint | `toggle_sprint` | No | Press sprint once to keep sprinting; optional toggle sneak. Shows a status line. Never changes your controls. |
 | Freelook | `freelook` | No | Hold Left Alt to look around your character without turning. Blocked on Hypixel. |
 | Snaplook | `snaplook` | No | Third person (front or back) while a key is held, like holding F5. Allowed everywhere. |
+| Custom Crosshair | `crosshair` | No | Cross, T, circle, square or dot, with gap, thickness, center dot, outline, and the vanilla invert look or a solid color. Shows only when the vanilla crosshair would. The defaults draw the vanilla crosshair. |
+| Motion Blur | `motion_blur` | No | Blends recent frames. Only the world is blurred, never the HUD or menus. The trail lasts the same at any frame rate. Off while an Iris shader pack is in use. |
+| Item Physics | `item_physics` | No | Dropped items lie flat on the ground and tumble as they fall. |
+| Scoreboard | `scoreboard` | No | The sidebar as a HUD element you can move and resize, with the red score numbers hidden. |
+| Chat | `chat` | No | Timestamps on new messages, chat that stays when you leave a world or server, up to 2000 messages of history, and Ctrl/Cmd-click a message to copy it. |
 
 With an Iris shader pack active, Fullbright also reports full night vision to the pack (setting
 `shaderPacks`, on by default). Many packs, Complementary included, treat that as fullbright;

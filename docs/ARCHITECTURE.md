@@ -51,10 +51,10 @@ wave-client/
 | `setting` | `Setting` (sealed), `BooleanSetting`, `SliderSetting`, `ColorSetting`, `KeybindSetting`, `EnumSetting` |
 | `input` | `Keybind`, `KeybindDispatcher`, `KeyMode`, `HoldToggle`, `ClickInput` |
 | `config` | `ConfigManager`, `ConfigSerializer`, `ConfigMigrations`, `AtomicFiles` |
-| `hud` | `HudModule`, `HudPosition`, `Anchor`, `HudLayer`, `SnapEngine`, `CachedText` |
+| `hud` | `HudModule`, `TextHudModule`, `HudPosition`, `Anchor`, `HudLayer`, `SnapEngine`, `CachedText`, `CachedComponent`, `VanillaElementGate` |
 | `gui` | `theme` (tokens, fonts), `render` (`Painter`, `Text`), `widget`, `menu` (`ModMenuScreen` and its pages), `screen` (`HudEditorScreen`), `PauseMenuButton` |
 | `command` | `/wave` client command (list, toggle, get/set settings, save/reload) |
-| `compat` | Optional integrations (Mod Menu), loaded only when present |
+| `compat` | Optional integrations (Mod Menu, Iris's shader-pack check), used only when present |
 | `mixin` | Mixins and accessors |
 
 Code in `module`, `setting`, `input` and `config` (and the math in `hud`) does not import
@@ -188,11 +188,11 @@ Menu's Configure button. It uses the same design tokens as the launcher.
 | Potion effects | HUD layer; `replaceElement(STATUS_EFFECTS)` with one preallocated gate that hides the vanilla icons while the module is on |
 | Toggle sprint / sneak | Our own toggle state, applied to the `Input` that `KeyboardInput.tick` builds (`@WrapOperation` on the constructor). Presses come from the raw key and mouse hooks. Vanilla's toggle options and `ToggleKeyMapping` are never touched |
 | Freelook / Snaplook | `Options.getCameraType` returns an override (one static field read; the option is never written). `Minecraft.handleKeybinds` reads the real perspective so F5 still cycles it, and ends either mode. Freelook also replaces the rotation `Camera.setup` reads and takes the mouse at the `LocalPlayer.turn` call in `MouseHandler.turnPlayer`. Freelook is policy-gated |
-| Custom crosshair | `replaceElement(CROSSHAIR)` |
-| Motion blur | Post pass after world render; off while an Iris shader pack is active |
-| Chat tweaks | `ChatComponent.addMessage`, `ChatComponent.clearMessages`, `ChatScreen.mouseClicked` |
-| Scoreboard | `replaceElement(SCOREBOARD)`, becomes a movable HUD element |
-| Item physics | Dropped item renderer transforms (last, optional) |
+| Custom crosshair | `replaceElement(CROSSHAIR)` with one preallocated element. Draws only when vanilla would (its first-person, spectator and F3 3D-crosshair checks, through a `Gui` invoker), otherwise runs the original. The shape is baked into disjoint rectangles drawn as one or two GUI elements (`GUI_INVERT` for the vanilla invert look), reused across frames |
+| Motion blur | `GameRenderer.render` after `LevelRenderer.doEntityOutline` (world finished, GUI not yet drawn): one full-screen pass blending the frame with a kept 8-bit image, frame-time weighted. Own unregistered pipeline, so a broken shader turns it off instead of failing a reload. Off while an Iris shader pack is in use (Iris API by reflection) |
+| Chat tweaks | `ChatComponent.addMessage`: the message argument at HEAD (timestamp) and the `logChatMessage` call (log stays unstamped); the history constant in `addMessageToQueue` and `addMessageToDisplayQueue`; the `clearMessages` call in `Gui.onDisconnected` (keep chat); `ChatScreen.mouseClicked` at its `button()` call (copy), hit-testing through `captureClickableText` |
+| Scoreboard | `replaceElement(SCOREBOARD)` gate plus a HUD module drawn by the HUD layer; the scoreboard is read once a tick; no mixins |
+| Item physics | `ItemEntityRenderer.extractRenderState` TAIL (decides the pose), and `@WrapOperation` on the single `translate` and `mulPose` in `submit`; the tumble angle lives in `@Unique` fields on `ItemEntity` |
 
 ### Compatibility
 
