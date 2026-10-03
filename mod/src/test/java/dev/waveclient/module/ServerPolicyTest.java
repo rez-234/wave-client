@@ -47,4 +47,11 @@ class ServerPolicyTest {
 		assertEquals(Map.of("freelook", "first", "zoom", "first", "fullbright", "second"), blocked);
 		assertFalse(custom.blockedModules("example.org").containsKey("zoom"));
 	}
+
+	@Test
+	void freelookIsBlockedOnHypixelButSnaplookIsNot() {
+		java.util.Map<String, String> blocked = ServerPolicy.defaults().blockedModules("mc.hypixel.net");
+		org.junit.jupiter.api.Assertions.assertTrue(blocked.containsKey("freelook"));
+		org.junit.jupiter.api.Assertions.assertFalse(blocked.containsKey("snaplook"), "snaplook is just holding F5");
+	}
 }

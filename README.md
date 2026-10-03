@@ -40,6 +40,16 @@ The dev game directory is `mod/run/`, and the mod's config is written to
 | Zoom | `zoom` | Yes | Hold C to zoom 4x. Scroll while zoomed to adjust. Lowers mouse sensitivity while zoomed. Optional cinematic camera. |
 | FPS | `fps` | Yes | Frames per second in the top-left corner. |
 | Coordinates | `coordinates` | No | Your X, Y and Z position, as block coordinates or with decimals. |
+| CPS | `cps` | No | Clicks per second. Counts mouse buttons, or whatever attack and use are bound to. Clicks in menus don't count. |
+| Ping | `ping` | No | Your latency as the server reports it (the tab list's number). |
+| Direction | `direction` | No | The way you're facing (North, or N with intercardinals), the axis it points along, and optionally degrees. |
+| Clock | `clock` | No | Real time, game time or both. 12 or 24 hour. |
+| Keystrokes | `keystrokes` | No | W, A, S, D, mouse buttons with CPS, and jump, lit while pressed. Follows your controls. |
+| Armor Status | `armor_status` | No | Armor and held item with durability, colored like the durability bar. |
+| Potion Effects | `potion_effects` | No | Active effects with level and time left. Hides the vanilla icons. Effects a server hides stay hidden. |
+| Toggle Sprint | `toggle_sprint` | No | Press sprint once to keep sprinting; optional toggle sneak. Shows a status line. Never changes your controls. |
+| Freelook | `freelook` | No | Hold Left Alt to look around your character without turning. Blocked on Hypixel. |
+| Snaplook | `snaplook` | No | Third person (front or back) while a key is held, like holding F5. Allowed everywhere. |
 
 With an Iris shader pack active, Fullbright also reports full night vision to the pack (setting
 `shaderPacks`, on by default). Many packs, Complementary included, treat that as fullbright;

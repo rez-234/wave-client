@@ -9,6 +9,7 @@ import net.minecraft.locale.Language;
 import net.minecraft.network.chat.FormattedText;
 import net.minecraft.util.FormattedCharSequence;
 
+import dev.waveclient.module.Category;
 import dev.waveclient.setting.BooleanSetting;
 import dev.waveclient.setting.ColorSetting;
 import dev.waveclient.setting.Setting;
@@ -45,10 +46,15 @@ public abstract class TextHudModule extends HudModule {
 	private int[] lineWidths = new int[0];
 	private int textWidth;
 	private boolean stale = true;
+	private boolean editorOpen;
 	private int ticksSinceMeasure;
 
 	protected TextHudModule(String id, String name, String description, Anchor anchor, double offsetX, double offsetY) {
 		super(id, name, description, anchor, offsetX, offsetY);
+	}
+
+	protected TextHudModule(String id, String name, String description, Category category, Anchor anchor, double offsetX, double offsetY) {
+		super(id, name, description, category, anchor, offsetX, offsetY);
 	}
 
 	/**
@@ -93,14 +99,25 @@ public abstract class TextHudModule extends HudModule {
 		stale = true;
 	}
 
+	/**
+	 * Whether the HUD editor is open. Text that would be empty should show a sample then, so the
+	 * element can be placed. Opening or closing the editor rebuilds the text.
+	 */
+	protected final boolean editorOpen() {
+		return editorOpen;
+	}
+
 	@Override
 	public void prepareForEditor() {
+		editorOpen = true;
 		updateText(true);
 	}
 
 	@Override
 	protected void onTick() {
-		boolean force = stale;
+		boolean editor = isHudEditorOpen();
+		boolean force = stale || editor != editorOpen;
+		editorOpen = editor;
 		stale = false;
 		updateText(force);
 

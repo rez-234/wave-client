@@ -4,11 +4,16 @@
 	"package": "dev.waveclient.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"client": [
+		"CameraMixin",
 		"GameRendererMixin",
 		"KeyboardHandlerMixin",
+		"KeyboardInputMixin",
 		"LightTextureAccessor",
 		"LightTextureMixin",
-		"MouseHandlerMixin"
+		"MinecraftMixin",
+		"MouseHandlerMixin",
+		"OptionsAccessor",
+		"OptionsMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

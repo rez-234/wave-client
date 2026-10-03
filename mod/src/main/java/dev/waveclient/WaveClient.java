@@ -20,14 +20,26 @@ import dev.waveclient.gui.PauseMenuButton;
 import dev.waveclient.gui.menu.ModMenuScreen;
 import dev.waveclient.gui.screen.HudEditorScreen;
 import dev.waveclient.hud.HudLayer;
+import dev.waveclient.hud.VanillaEffectsGate;
+import dev.waveclient.input.ClickInput;
 import dev.waveclient.input.KeybindDispatcher;
 import dev.waveclient.mixin.LightTextureAccessor;
 import dev.waveclient.module.Module;
 import dev.waveclient.module.ModuleManager;
 import dev.waveclient.module.ServerPolicy;
+import dev.waveclient.module.impl.camera.FreelookModule;
+import dev.waveclient.module.impl.camera.SnaplookModule;
 import dev.waveclient.module.impl.camera.ZoomModule;
+import dev.waveclient.module.impl.hud.ArmorStatusModule;
+import dev.waveclient.module.impl.hud.ClockModule;
 import dev.waveclient.module.impl.hud.CoordinatesModule;
+import dev.waveclient.module.impl.hud.CpsModule;
+import dev.waveclient.module.impl.hud.DirectionModule;
 import dev.waveclient.module.impl.hud.FpsModule;
+import dev.waveclient.module.impl.hud.KeystrokesModule;
+import dev.waveclient.module.impl.hud.PingModule;
+import dev.waveclient.module.impl.hud.PotionEffectsModule;
+import dev.waveclient.module.impl.movement.ToggleSprintModule;
 import dev.waveclient.module.impl.render.FullbrightModule;
 
 public final class WaveClient implements ClientModInitializer {
@@ -39,6 +51,7 @@ public final class WaveClient implements ClientModInitializer {
 	private final ModuleManager modules = new ModuleManager();
 	private final ClientSettings clientSettings = new ClientSettings();
 	private final KeybindDispatcher keybinds = new KeybindDispatcher();
+	private final ClickInput clickInput = new ClickInput();
 	private final ServerPolicy serverPolicy = ServerPolicy.defaults();
 
 	// Registration order is the order modules appear in lists and the config file.
@@ -46,6 +59,16 @@ public final class WaveClient implements ClientModInitializer {
 	private final ZoomModule zoom = modules.register(new ZoomModule());
 	private final FpsModule fps = modules.register(new FpsModule());
 	private final CoordinatesModule coordinates = modules.register(new CoordinatesModule());
+	private final CpsModule cps = modules.register(new CpsModule());
+	private final PingModule ping = modules.register(new PingModule());
+	private final DirectionModule direction = modules.register(new DirectionModule());
+	private final ClockModule clock = modules.register(new ClockModule());
+	private final KeystrokesModule keystrokes = modules.register(new KeystrokesModule());
+	private final ArmorStatusModule armorStatus = modules.register(new ArmorStatusModule());
+	private final PotionEffectsModule potionEffects = modules.register(new PotionEffectsModule());
+	private final ToggleSprintModule toggleSprint = modules.register(new ToggleSprintModule());
+	private final FreelookModule freelook = modules.register(new FreelookModule());
+	private final SnaplookModule snaplook = modules.register(new SnaplookModule());
 
 	private ConfigManager config;
 	private boolean hudEditorRequested;
@@ -83,6 +106,7 @@ public final class WaveClient implements ClientModInitializer {
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(modules::clearBlocks));
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, buildContext) -> WaveCommand.register(dispatcher, this));
 		HudLayer.register(modules, clientSettings);
+		VanillaEffectsGate.register(potionEffects);
 		PauseMenuButton.register(this);
 		fullbright.setLightmapInvalidator(WaveClient::invalidateLightmap);
 
@@ -169,5 +193,49 @@ public final class WaveClient implements ClientModInitializer {
 
 	public CoordinatesModule coordinates() {
 		return coordinates;
+	}
+
+	public ClickInput clickInput() {
+		return clickInput;
+	}
+
+	public CpsModule cps() {
+		return cps;
+	}
+
+	public PingModule ping() {
+		return ping;
+	}
+
+	public DirectionModule direction() {
+		return direction;
+	}
+
+	public ClockModule clock() {
+		return clock;
+	}
+
+	public KeystrokesModule keystrokes() {
+		return keystrokes;
+	}
+
+	public ArmorStatusModule armorStatus() {
+		return armorStatus;
+	}
+
+	public PotionEffectsModule potionEffects() {
+		return potionEffects;
+	}
+
+	public ToggleSprintModule toggleSprint() {
+		return toggleSprint;
+	}
+
+	public FreelookModule freelook() {
+		return freelook;
+	}
+
+	public SnaplookModule snaplook() {
+		return snaplook;
 	}
 }

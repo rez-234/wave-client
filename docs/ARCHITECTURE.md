@@ -49,7 +49,7 @@ wave-client/
 | `module` | `Module`, `Category`, `ModuleManager`, `ServerPolicy`, `SettingContainer` |
 | `module.impl.*` | Modules, grouped by category |
 | `setting` | `Setting` (sealed), `BooleanSetting`, `SliderSetting`, `ColorSetting`, `KeybindSetting`, `EnumSetting` |
-| `input` | `Keybind`, `KeybindDispatcher` |
+| `input` | `Keybind`, `KeybindDispatcher`, `KeyMode`, `HoldToggle`, `ClickInput` |
 | `config` | `ConfigManager`, `ConfigSerializer`, `ConfigMigrations`, `AtomicFiles` |
 | `hud` | `HudModule`, `HudPosition`, `Anchor`, `HudLayer`, `SnapEngine`, `CachedText` |
 | `gui` | `theme` (tokens, fonts), `render` (`Painter`, `Text`), `widget`, `menu` (`ModMenuScreen` and its pages), `screen` (`HudEditorScreen`), `PauseMenuButton` |
@@ -183,9 +183,11 @@ Menu's Configure button. It uses the same design tokens as the launcher.
 |---|---|
 | Fullbright | Modifies the gamma value read in `LightTexture.updateLightTexture` (sliced from the `Options.gamma()` call); never writes the option. With setting `shaderPacks`, also answers `GameRenderer.getNightVisionScale` with 1 for the local player/camera entity, which Iris passes to shader packs |
 | Zoom | `GameRenderer.getFov` (world FOV only, not the hand; min 1 degree), `GameRenderer.bobView` (damps bobbing while zoomed), `MouseHandler.onScroll` (at `LocalPlayer.isSpectator()`), `MouseHandler.turnPlayer` (scales `accumulatedDX/DY`, reads `Options.smoothCamera`) |
-| FPS, CPS, ping, coords, direction, clock, keystrokes, armor, potions | HUD layer (CPS via `MouseHandler.onButton`) |
-| Toggle sprint / sneak | Vanilla `ToggleKeyMapping` toggle check |
-| Freelook / Snaplook | `Camera.setup`, `Entity.turn` (local player only); policy-gated |
+| FPS, ping, coords, direction, clock, keystrokes, armor | HUD layer only. Keystrokes polls the bound keys with GLFW each frame (no state written) |
+| CPS | Counts at the `KeyMapping.click` calls in `MouseHandler.onButton` and `KeyboardHandler.keyPress` (presses only, no screen open; vanilla always runs) |
+| Potion effects | HUD layer; `replaceElement(STATUS_EFFECTS)` with one preallocated gate that hides the vanilla icons while the module is on |
+| Toggle sprint / sneak | Our own toggle state, applied to the `Input` that `KeyboardInput.tick` builds (`@WrapOperation` on the constructor). Presses come from the raw key and mouse hooks. Vanilla's toggle options and `ToggleKeyMapping` are never touched |
+| Freelook / Snaplook | `Options.getCameraType` returns an override (one static field read; the option is never written). `Minecraft.handleKeybinds` reads the real perspective so F5 still cycles it, and ends either mode. Freelook also replaces the rotation `Camera.setup` reads and takes the mouse at the `LocalPlayer.turn` call in `MouseHandler.turnPlayer`. Freelook is policy-gated |
 | Custom crosshair | `replaceElement(CROSSHAIR)` |
 | Motion blur | Post pass after world render; off while an Iris shader pack is active |
 | Chat tweaks | `ChatComponent.addMessage`, `ChatComponent.clearMessages`, `ChatScreen.mouseClicked` |

@@ -9,6 +9,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import dev.waveclient.input.KeyMode;
+
 import dev.waveclient.module.ModuleManager;
 
 class ZoomModuleTest {
@@ -73,7 +75,7 @@ class ZoomModuleTest {
 
 	@Test
 	void toggleMode() {
-		zoom.keyMode.set(ZoomModule.KeyMode.TOGGLE);
+		zoom.keyMode.set(KeyMode.TOGGLE);
 		zoom.smoothTransition.set(false);
 
 		press();
@@ -220,12 +222,12 @@ class ZoomModuleTest {
 	@Test
 	void switchingToHoldWhileToggledOnStopsZoom() {
 		zoom.smoothTransition.set(false);
-		zoom.keyMode.set(ZoomModule.KeyMode.TOGGLE);
+		zoom.keyMode.set(KeyMode.TOGGLE);
 		press();
 		release();
 		assertTrue(zoom.isZooming());
 
-		zoom.keyMode.set(ZoomModule.KeyMode.HOLD);
+		zoom.keyMode.set(KeyMode.HOLD);
 		assertFalse(zoom.isZooming());
 		assertEquals(1.0, zoom.fovDivisor(), EPS);
 	}

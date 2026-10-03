@@ -2,6 +2,7 @@ package dev.waveclient.module.impl.camera;
 
 import java.util.function.LongSupplier;
 
+import dev.waveclient.input.KeyMode;
 import dev.waveclient.input.Keybind;
 import dev.waveclient.module.Category;
 import dev.waveclient.module.Module;
@@ -19,22 +20,6 @@ import dev.waveclient.setting.SliderSetting;
  * calling it several times per frame is harmless and no per-frame state needs updating.
  */
 public final class ZoomModule extends Module {
-	public enum KeyMode implements EnumSetting.Labeled {
-		HOLD("Hold"),
-		TOGGLE("Toggle");
-
-		private final String label;
-
-		KeyMode(String label) {
-			this.label = label;
-		}
-
-		@Override
-		public String label() {
-			return label;
-		}
-	}
-
 	static final long TRANSITION_NANOS = 150_000_000L;
 	private static final int GLFW_KEY_C = 67;
 	private static final double SCROLL_STEP = 1.25;

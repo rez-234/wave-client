@@ -1,7 +1,10 @@
 package dev.waveclient.hud;
 
 import com.google.gson.JsonObject;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+
+import dev.waveclient.gui.screen.HudEditorScreen;
 
 import dev.waveclient.module.Category;
 import dev.waveclient.module.Module;
@@ -20,7 +23,13 @@ public abstract class HudModule extends Module implements HudEditController.Elem
 	// The position's change sink captures 'this', but only runs on later edits, never during construction.
 	@SuppressWarnings("this-escape")
 	protected HudModule(String id, String name, String description, Anchor anchor, double offsetX, double offsetY) {
-		super(id, name, description, Category.HUD);
+		this(id, name, description, Category.HUD, anchor, offsetX, offsetY);
+	}
+
+	/** For a module that has a HUD element but belongs to another category (e.g. Toggle Sprint's status). */
+	@SuppressWarnings("this-escape")
+	protected HudModule(String id, String name, String description, Category category, Anchor anchor, double offsetX, double offsetY) {
+		super(id, name, description, category);
 		this.position = new HudPosition(anchor, offsetX, offsetY);
 		this.position.setChangeSink(this::markDirty);
 	}
@@ -42,6 +51,11 @@ public abstract class HudModule extends Module implements HudEditController.Elem
 	@Override
 	public boolean isEditable() {
 		return isActive();
+	}
+
+	/** Whether the HUD editor is open, where an element that would be empty shows a sample so it can be placed. */
+	public static boolean isHudEditorOpen() {
+		return Minecraft.getInstance().screen instanceof HudEditorScreen;
 	}
 
 	/**
