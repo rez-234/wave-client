@@ -64,6 +64,11 @@ export async function prepareGame(context: GameContext, options: PrepareOptions)
   const signal = options.signal
   const verify = options.repair ? 'hash' : 'size'
   const env: RuleEnvironment = { os: mojangOsName(context.platform), arch: context.arch, osVersion: context.osVersion, features: {} }
+
+  if (context.platform === 'linux' && context.arch !== 'x64') {
+    // Mojang ships neither a Java runtime nor LWJGL natives for Linux on ARM (or 32-bit).
+    throw new Error(`Minecraft ${PINS.minecraft} doesn't support Linux on ${context.arch}.`)
+  }
   const task = (label: string) => (progress: Omit<TaskProgress, 'label'>) => options.onTask?.({ label, ...progress })
   const announce = (label: string) => options.onTask?.({ label, doneFiles: 0, totalFiles: 0, doneBytes: 0, totalBytes: 0 })
 
