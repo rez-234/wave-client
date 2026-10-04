@@ -13,6 +13,8 @@ export interface GameExit {
   signal: NodeJS.Signals | null
   /** Set when the game didn't exit normally (crash report, JVM error or non-zero exit). */
   crash: CrashSummary | null
+  /** The player ended the game from the launcher. */
+  killed: boolean
 }
 
 export interface GameSessionOptions {
@@ -35,6 +37,8 @@ export class GameSession {
   private child: ChildProcess | null = null
   private readonly startedAt: number
   private exited = false
+  /** Set when the player chose to end the game, so its kill exit code isn't reported as a crash. */
+  private killedByUser = false
 
   constructor(
     private readonly command: LaunchCommand,
@@ -89,11 +93,14 @@ export class GameSession {
 
       if (error) {
         this.launcherLine('ERROR', `Couldn't start Java: ${error.message}`)
+      } else if (this.killedByUser) {
+        this.launcherLine('INFO', 'Minecraft was closed from the launcher')
       } else {
         this.launcherLine(code === 0 ? 'INFO' : 'WARN', `Minecraft exited with ${signal ? `signal ${signal}` : `code ${code}`}`)
       }
 
-      const crash = await analyzeExit({
+      // A forced quit ends with a kill exit code (143, or 1 on Windows); that isn't a crash.
+      const crash = this.killedByUser ? null : await analyzeExit({
         gameDir: this.command.cwd,
         startedAt: this.startedAt,
         exitCode: error ? -1 : code,
@@ -103,7 +110,7 @@ export class GameSession {
         spawnError: error?.message
       }).catch(() => null)
 
-      this.options.onExit({ code: error ? null : code, signal, crash: crash ? redactCrash(crash, this.command.secrets) : null })
+      this.options.onExit({ code: error ? null : code, signal, crash: crash ? redactCrash(crash, this.command.secrets) : null, killed: this.killedByUser })
     }
 
     child.on('error', (error) => void finish(null, null, error))
@@ -113,6 +120,7 @@ export class GameSession {
   /** Ends the game. Minecraft has no clean shutdown signal, so this is a kill. */
   kill(): void {
     if (this.child && !this.exited) {
+      this.killedByUser = true
       this.child.kill()
     }
   }

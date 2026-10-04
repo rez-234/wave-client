@@ -60,7 +60,7 @@ describe('GameSession', () => {
       child.emit('close', 0, null)
     })
 
-    expect(exit).toEqual({ code: 0, signal: null, crash: null })
+    expect(exit).toEqual({ code: 0, signal: null, crash: null, killed: false })
     expect(lines.map((l) => l.message)).toEqual([
       'Starting Minecraft with /rt/java',
       'Setting user: Steve, token [redacted]',
@@ -71,6 +71,26 @@ describe('GameSession', () => {
     expect(lines[2]!.level).toBe('WARN')
     expect(args[1]).toEqual(['-cp', 'x', 'Main', '--accessToken', TOKEN])
     expect((args[2] as { cwd: string }).cwd).toBe(dir)
+  })
+
+  it('does not call a forced quit a crash', async () => {
+    const lines: LogLine[] = []
+    const exit = await new Promise<GameExit>((resolve) => {
+      const child = fakeChild()
+      const session = new GameSession(
+        { java: '/rt/java', args: [], cwd: dir, secrets: [] },
+        { onLines: (batch) => lines.push(...batch), onExit: resolve, spawnFn: (() => child) as never }
+      )
+      session.start()
+      child.kill = () => {
+        setTimeout(() => child.emit('close', 143, null), 1)
+        return true
+      }
+      session.kill()
+    })
+
+    expect(exit).toMatchObject({ code: 143, crash: null, killed: true })
+    expect(lines.at(-1)?.message).toBe('Minecraft was closed from the launcher')
   })
 
   it('reports a crash with the saved report and suspected mods', async () => {

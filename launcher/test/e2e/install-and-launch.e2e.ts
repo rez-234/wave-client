@@ -84,6 +84,8 @@ describe('install and launch', () => {
 
     session!.kill()
     const result = await exit
+    expect(result.killed).toBe(true)
+    expect(result.crash, 'closing the game from the launcher is not a crash').toBeNull()
     expect(lines.some((line) => line.message.includes(command.secrets[0]!))).toBe(false)
     console.log(`Game stopped (${result.signal ?? result.code}); ${lines.length} log lines`)
   })
