@@ -45,11 +45,6 @@ jobs:
   # WaveClientGameTest then checks the hooks and takes screenshots (uploaded as an artifact).
   client-test:
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        # Temporary: three runs per push while checking the world-load stall fix.
-        attempt: [1, 2, 3]
     defaults:
       run:
         working-directory: mod
@@ -71,7 +66,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: client-gametest-${{ matrix.attempt }}
+          name: client-gametest
           path: |
             mod/build/clientgametest/screenshots/
             mod/build/clientgametest/logs/
