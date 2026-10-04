@@ -21,6 +21,8 @@ export interface StoredAccount {
   xuid: string
   /** Microsoft refresh token: re-runs the whole chain without the user. */
   msRefreshToken: string
+  /** The Azure app id that issued the refresh token; it only works with that app. */
+  msClientId: string
   mcAccessToken: string
   /** Epoch milliseconds. */
   mcExpiresAt: number
@@ -197,6 +199,7 @@ function isAccount(value: unknown): value is StoredAccount {
     /^[0-9a-f]{32}$/.test(a.id) &&
     typeof a.name === 'string' &&
     typeof a.msRefreshToken === 'string' &&
+    typeof a.msClientId === 'string' &&
     typeof a.mcAccessToken === 'string' &&
     typeof a.mcExpiresAt === 'number'
   )

@@ -17,6 +17,7 @@ const account = (id: string, name: string, extra: Partial<StoredAccount> = {}): 
   name,
   xuid: '123',
   msRefreshToken: `refresh-${name}`,
+  msClientId: 'client',
   mcAccessToken: `access-${name}`,
   mcExpiresAt: 1_000,
   ...extra

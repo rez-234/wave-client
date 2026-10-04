@@ -18,15 +18,30 @@ export interface HttpOptions {
 }
 
 export class HttpError extends Error {
+  /** The start of the response body, for messages. */
+  readonly bodySnippet: string
+
   constructor(
     readonly status: number,
     readonly url: string,
-    /** The start of the response body, for error messages. Never includes the request. */
-    readonly bodySnippet: string,
-    readonly retryAfterMs: number | null = null
+    /** The response body (capped), for parsing error details. Never includes the request. */
+    readonly body: string,
+    readonly retryAfterMs: number | null = null,
+    readonly headers: Headers = new Headers()
   ) {
-    super(`HTTP ${status} from ${redactUrl(url)}${bodySnippet ? `: ${bodySnippet}` : ''}`)
+    const snippet = body.length > 300 ? `${body.slice(0, 300)}…` : body
+    super(`HTTP ${status} from ${redactUrl(url)}${snippet ? `: ${snippet}` : ''}`)
     this.name = 'HttpError'
+    this.bodySnippet = snippet
+  }
+
+  /** The body parsed as JSON, or null. */
+  json<T = Record<string, unknown>>(): T | null {
+    try {
+      return JSON.parse(this.body) as T
+    } catch {
+      return null
+    }
   }
 }
 
@@ -120,7 +135,7 @@ export class HttpClient {
           return response
         }
 
-        const error = new HttpError(response.status, url, await snippet(response), retryAfter(response))
+        const error = new HttpError(response.status, url, await errorBody(response), retryAfter(response), response.headers)
 
         if (!RETRY_STATUSES.has(response.status) || attempt === retries) {
           throw error
@@ -143,10 +158,12 @@ export class HttpClient {
   }
 }
 
-async function snippet(response: Response): Promise<string> {
+const MAX_ERROR_BODY = 8192
+
+async function errorBody(response: Response): Promise<string> {
   try {
     const text = await response.text()
-    return text.length > 300 ? `${text.slice(0, 300)}…` : text
+    return text.length > MAX_ERROR_BODY ? text.slice(0, MAX_ERROR_BODY) : text
   } catch {
     return ''
   }
