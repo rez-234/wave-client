@@ -11,10 +11,11 @@ export default defineConfig({
   preload: {
     resolve: { alias: shared },
     build: {
-      // A sandboxed preload can't load other files, so it is one self-contained CommonJS script.
+      // A sandboxed preload can't load other files, so it is one self-contained CommonJS script:
+      // dependencies bundled, a single entry, no dynamic imports (isolatedEntries isn't needed and
+      // crashes electron-vite 5.0.0 when output isn't a terminal).
       externalizeDeps: false,
-      isolatedEntries: true,
-      rollupOptions: { output: { format: 'cjs', entryFileNames: '[name].cjs' } }
+      rollupOptions: { output: { format: 'cjs', entryFileNames: '[name].cjs', inlineDynamicImports: true } }
     }
   },
   renderer: {
