@@ -3,7 +3,7 @@ package dev.waveclient.module.impl.hud;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 
-import dev.waveclient.hud.Anchor;
+import dev.waveclient.hud.HudDefaults;
 import dev.waveclient.hud.TextHudModule;
 import dev.waveclient.setting.BooleanSetting;
 import dev.waveclient.setting.EnumSetting;
@@ -40,7 +40,7 @@ public final class DirectionModule extends TextHudModule {
 	private int shownDegrees = -1;
 
 	public DirectionModule() {
-		super("direction", "Direction", "Shows the direction you are facing.", Anchor.TOP_CENTER, 0, 4);
+		super("direction", "Direction", "Shows the direction you are facing.", HudDefaults.DIRECTION);
 	}
 
 	@Override

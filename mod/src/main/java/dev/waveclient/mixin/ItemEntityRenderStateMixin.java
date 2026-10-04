@@ -14,12 +14,15 @@ public abstract class ItemEntityRenderStateMixin implements ItemPhysicsRenderSta
 	private float waveclient$tumble;
 	@Unique
 	private boolean waveclient$laid;
+	@Unique
+	private float waveclient$raise;
 
 	@Override
-	public void waveclient$setPhysics(boolean physics, float tumble, boolean laid) {
+	public void waveclient$setPhysics(boolean physics, float tumble, boolean laid, float raise) {
 		waveclient$physics = physics;
 		waveclient$tumble = tumble;
 		waveclient$laid = laid;
+		waveclient$raise = raise;
 	}
 
 	@Override
@@ -35,5 +38,10 @@ public abstract class ItemEntityRenderStateMixin implements ItemPhysicsRenderSta
 	@Override
 	public boolean waveclient$laid() {
 		return waveclient$laid;
+	}
+
+	@Override
+	public float waveclient$raise() {
+		return waveclient$raise;
 	}
 }

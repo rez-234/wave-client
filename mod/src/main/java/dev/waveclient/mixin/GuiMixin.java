@@ -14,8 +14,9 @@ import dev.waveclient.WaveClient;
 public abstract class GuiMixin {
 	/**
 	 * Keep chat: skip clearing it when leaving a world or server. Only this call is changed, so
-	 * F3 + D and other mods can still clear chat. Messages the old server delayed are still
-	 * dropped, as clearing would, so they don't appear in the next world.
+	 * F3 + D and other mods can still clear chat. Messages the old server delayed (the Chat Delay
+	 * accessibility option) are shown now, at disconnect, as clearing would, so they don't
+	 * trickle into the next session.
 	 */
 	@WrapOperation(method = "onDisconnected()V",
 			at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/components/ChatComponent;clearMessages(Z)V"))

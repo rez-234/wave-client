@@ -18,7 +18,7 @@ import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 
-import dev.waveclient.hud.Anchor;
+import dev.waveclient.hud.HudDefaults;
 import dev.waveclient.hud.CachedText;
 import dev.waveclient.hud.HudModule;
 import dev.waveclient.setting.BooleanSetting;
@@ -96,7 +96,7 @@ public final class PotionEffectsModule extends HudModule {
 	private int ticksSinceMeasure;
 
 	public PotionEffectsModule() {
-		super("potion_effects", "Potion Effects", "Shows your active effects and how long they last.", Anchor.TOP_RIGHT, -4, 22);
+		super("potion_effects", "Potion Effects", "Shows your active effects and how long they last.", HudDefaults.POTION_EFFECTS);
 	}
 
 	private static CachedText[] texts(int size) {
@@ -112,6 +112,12 @@ public final class PotionEffectsModule extends HudModule {
 	/** Whether the vanilla effect icons should be hidden right now (read by the HUD element that wraps them). */
 	public boolean hidesVanillaIcons() {
 		return isActive() && hideVanilla.get();
+	}
+
+	/** Stays under F3 while it stands in for vanilla's icons, which vanilla keeps under F3. */
+	@Override
+	public boolean shownWithDebugScreen() {
+		return hideVanilla.get();
 	}
 
 	@Override

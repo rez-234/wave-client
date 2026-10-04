@@ -78,9 +78,17 @@ public final class MotionBlurRenderer {
 		}
 
 		// Shader packs usually have their own motion blur, and draw the world differently.
-		if (!module.isActive() || IrisCompat.isShaderPackInUse()) {
-			historyValid = false;
-			clock.reset();
+		boolean shaderPack = IrisCompat.isShaderPackInUse();
+
+		if (!module.isActive() || shaderPack) {
+			if (shaderPack && (history != null || config != null)) {
+				// Don't hold two screen-sized textures while a pack is on; made again when it's off.
+				release();
+			} else {
+				historyValid = false;
+				clock.reset();
+			}
+
 			return;
 		}
 

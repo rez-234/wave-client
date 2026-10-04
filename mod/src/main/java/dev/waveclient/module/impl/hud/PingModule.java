@@ -5,7 +5,7 @@ import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.player.LocalPlayer;
 
-import dev.waveclient.hud.Anchor;
+import dev.waveclient.hud.HudDefaults;
 import dev.waveclient.hud.TextHudModule;
 import dev.waveclient.setting.BooleanSetting;
 import dev.waveclient.setting.EnumSetting;
@@ -34,7 +34,7 @@ public final class PingModule extends TextHudModule {
 
 	public final EnumSetting<Style> style = add(new EnumSetting<>("style", "Style", Style.NUMBER_FIRST));
 	public final BooleanSetting hideInSingleplayer = add(new BooleanSetting("hideInSingleplayer", "Hide in singleplayer", true)
-			.describe("Singleplayer worlds have no network latency to show."));
+			.describe("Singleplayer worlds, including one you opened to LAN, have no network latency to show."));
 
 	/** Shown in the HUD editor when there is no latency to show, so the element can be placed. */
 	private static final int EDITOR_SAMPLE = 42;
@@ -46,7 +46,7 @@ public final class PingModule extends TextHudModule {
 	private int shownLatency = Integer.MIN_VALUE;
 
 	public PingModule() {
-		super("ping", "Ping", "Shows your latency to the server.", Anchor.TOP_LEFT, 4, 78);
+		super("ping", "Ping", "Shows your latency to the server.", HudDefaults.PING);
 	}
 
 	@Override
@@ -97,7 +97,7 @@ public final class PingModule extends TextHudModule {
 			return HIDDEN;
 		}
 
-		if (minecraft.isSingleplayer() && hideInSingleplayer.get()) {
+		if (minecraft.hasSingleplayerServer() && hideInSingleplayer.get()) {
 			return HIDDEN;
 		}
 

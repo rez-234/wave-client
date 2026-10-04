@@ -64,4 +64,32 @@ class ToggleKeyTest {
 		assertEquals(0, MovementStatus.NONE.lines().length, "nothing drawn");
 		assertEquals("[Sprinting (Toggled)]", MovementStatus.SPRINT_TOGGLED.lines()[0]);
 	}
+
+	@Test
+	void chordTakesBackTheFlip() {
+		ToggleKey key = new ToggleKey();
+		key.onPress(Mode.TOGGLE, false, false);
+		key.undoPendingFlip();
+		assertFalse(key.toggled(), "Ctrl+Q while Ctrl is the sprint key doesn't toggle sprint");
+		key.undoPendingFlip();
+		assertFalse(key.toggled(), "undone once only");
+
+		key.onPress(Mode.TOGGLE, false, false);
+		key.released();
+		key.undoPendingFlip();
+		assertTrue(key.toggled(), "a chord after the key was released leaves the toggle alone");
+
+		key.onPress(Mode.HOLD, false, false);
+		key.undoPendingFlip();
+		assertTrue(key.toggled(), "a press that didn't flip has nothing to undo");
+	}
+
+	@Test
+	void clearDropsPendingFlip() {
+		ToggleKey key = new ToggleKey();
+		key.onPress(Mode.TOGGLE, false, false);
+		key.clear();
+		key.undoPendingFlip();
+		assertFalse(key.toggled());
+	}
 }

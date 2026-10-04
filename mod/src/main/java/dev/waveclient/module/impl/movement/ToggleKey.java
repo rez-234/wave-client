@@ -28,6 +28,8 @@ public final class ToggleKey {
 	}
 
 	private boolean toggled;
+	/** The last press flipped the toggle and the key hasn't been released since. */
+	private boolean flipPending;
 
 	/**
 	 * A real press of the key.
@@ -39,7 +41,24 @@ public final class ToggleKey {
 	public void onPress(Mode mode, boolean vanillaToggle, boolean suppressed) {
 		if (mode == Mode.TOGGLE && !vanillaToggle && !suppressed) {
 			toggled = !toggled;
+			flipPending = true;
 		}
+	}
+
+	/**
+	 * The key was held as a modifier for another key (Ctrl+Q drops a stack), not pressed to
+	 * toggle: takes back the flip from its press, if it is still held.
+	 */
+	public void undoPendingFlip() {
+		if (flipPending) {
+			toggled = !toggled;
+			flipPending = false;
+		}
+	}
+
+	/** The key is up: a later chord no longer undoes its last press. */
+	public void released() {
+		flipPending = false;
 	}
 
 	/**
@@ -70,5 +89,6 @@ public final class ToggleKey {
 
 	public void clear() {
 		toggled = false;
+		flipPending = false;
 	}
 }

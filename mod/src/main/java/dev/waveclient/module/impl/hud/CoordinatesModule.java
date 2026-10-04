@@ -3,7 +3,7 @@ package dev.waveclient.module.impl.hud;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 
-import dev.waveclient.hud.Anchor;
+import dev.waveclient.hud.HudDefaults;
 import dev.waveclient.hud.TextHudModule;
 import dev.waveclient.setting.EnumSetting;
 import dev.waveclient.setting.SliderSetting;
@@ -37,7 +37,7 @@ public final class CoordinatesModule extends TextHudModule {
 	private long shownZ = Long.MIN_VALUE;
 
 	public CoordinatesModule() {
-		super("coordinates", "Coordinates", "Shows your X, Y and Z position.", Anchor.TOP_LEFT, 4, 22);
+		super("coordinates", "Coordinates", "Shows your X, Y and Z position.", HudDefaults.COORDINATES);
 	}
 
 	@Override

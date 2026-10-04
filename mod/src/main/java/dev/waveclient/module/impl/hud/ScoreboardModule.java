@@ -19,7 +19,7 @@ import net.minecraft.world.scores.PlayerScoreEntry;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Scoreboard;
 
-import dev.waveclient.hud.Anchor;
+import dev.waveclient.hud.HudDefaults;
 import dev.waveclient.hud.CachedComponent;
 import dev.waveclient.hud.HudModule;
 import dev.waveclient.setting.BooleanSetting;
@@ -64,7 +64,7 @@ public final class ScoreboardModule extends HudModule {
 
 	public ScoreboardModule() {
 		// Right edge and vertical center where vanilla puts a 10-line sidebar.
-		super("scoreboard", "Scoreboard", "Move and resize the sidebar scoreboard, and hide its numbers.", Anchor.MIDDLE_RIGHT, -1, -20);
+		super("scoreboard", "Scoreboard", "Move and resize the sidebar scoreboard, and hide its numbers.", HudDefaults.SCOREBOARD);
 
 		for (int i = 0; i < ScoreboardLayout.MAX_ROWS; i++) {
 			names[i] = new CachedComponent();
@@ -75,6 +75,12 @@ public final class ScoreboardModule extends HudModule {
 	/** Whether the vanilla sidebar should be hidden right now. */
 	public boolean hidesVanilla() {
 		return isActive();
+	}
+
+	/** It is the sidebar now, and vanilla keeps the sidebar under F3. */
+	@Override
+	public boolean shownWithDebugScreen() {
+		return true;
 	}
 
 	@Override

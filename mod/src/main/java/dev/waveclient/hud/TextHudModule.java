@@ -57,6 +57,14 @@ public abstract class TextHudModule extends HudModule {
 		super(id, name, description, category, anchor, offsetX, offsetY);
 	}
 
+	protected TextHudModule(String id, String name, String description, HudDefaults.Spot spot) {
+		super(id, name, description, spot);
+	}
+
+	protected TextHudModule(String id, String name, String description, Category category, HudDefaults.Spot spot) {
+		super(id, name, description, category, spot);
+	}
+
 	/**
 	 * Rebuilds the text if its source value changed, by calling {@link #setLines}.
 	 *

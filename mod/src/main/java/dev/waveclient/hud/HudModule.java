@@ -26,6 +26,14 @@ public abstract class HudModule extends Module implements HudEditController.Elem
 		this(id, name, description, Category.HUD, anchor, offsetX, offsetY);
 	}
 
+	protected HudModule(String id, String name, String description, HudDefaults.Spot spot) {
+		this(id, name, description, Category.HUD, spot);
+	}
+
+	protected HudModule(String id, String name, String description, Category category, HudDefaults.Spot spot) {
+		this(id, name, description, category, spot.anchor(), spot.x(), spot.y());
+	}
+
 	/** For a module that has a HUD element but belongs to another category (e.g. Toggle Sprint's status). */
 	@SuppressWarnings("this-escape")
 	protected HudModule(String id, String name, String description, Category category, Anchor anchor, double offsetX, double offsetY) {
@@ -51,6 +59,14 @@ public abstract class HudModule extends Module implements HudEditController.Elem
 	@Override
 	public boolean isEditable() {
 		return isActive();
+	}
+
+	/**
+	 * Whether the element stays on screen while F3 hides the others: true for one that stands in
+	 * for a vanilla element (the sidebar, the effect icons), which vanilla keeps showing under F3.
+	 */
+	public boolean shownWithDebugScreen() {
+		return false;
 	}
 
 	/** Whether the HUD editor is open, where an element that would be empty shows a sample so it can be placed. */

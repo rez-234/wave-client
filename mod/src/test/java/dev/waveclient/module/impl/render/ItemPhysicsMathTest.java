@@ -71,6 +71,67 @@ class ItemPhysicsMathTest {
 		}
 	}
 
+	/** The renderer's copies with their random offsets, as ItemEntityRenderer draws a stack. */
+	@Test
+	void jitteredCopiesStayAboveTheGround() {
+		Random angles = new Random(2);
+
+		for (int seed = 0; seed < 300; seed++) {
+			for (int count = 2; count <= 5; count++) {
+				float pitch = angles.nextInt(4) * PI / 2 + (seed % 3 == 0 ? angles.nextFloat() * 2 * PI : 0);
+
+				for (float[][] box : new float[][][] {{ITEM_MIN, ITEM_MAX}, {BLOCK_MIN, BLOCK_MAX}}) {
+					float[] min = box[0];
+					float[] max = box[1];
+					float depth = max[2] - min[2];
+					boolean flat = ItemPhysicsMath.isFlat(depth);
+					Random random = new Random(seed);
+					float lift = ItemPhysicsMath.lift(pitch, min[1], max[1], min[2], max[2], count)
+							+ ItemPhysicsMath.clusterDrop(pitch, flat, count, random::nextFloat);
+					Matrix4f pose = pose(lift, min, max, 0.7F, pitch);
+					float spacing = depth * 1.5F;
+					random = new Random(seed);
+					float lowest = Float.MAX_VALUE;
+
+					for (int copy = 0; copy < count; copy++) {
+						Matrix4f copyPose = new Matrix4f(pose);
+
+						if (flat) {
+							copyPose.translate(0, 0, -(spacing * (count - 1) / 2F) + copy * spacing);
+
+							if (copy > 0) {
+								copyPose.translate((random.nextFloat() * 2 - 1) * 0.075F, (random.nextFloat() * 2 - 1) * 0.075F, 0);
+							}
+						} else if (copy > 0) {
+							copyPose.translate((random.nextFloat() * 2 - 1) * 0.15F, (random.nextFloat() * 2 - 1) * 0.15F, (random.nextFloat() * 2 - 1) * 0.15F);
+						}
+
+						lowest = Math.min(lowest, lowest(copyPose, min, max, 0));
+					}
+
+					String at = "seed " + seed + ", count " + count + ", flat " + flat + ", pitch " + pitch;
+
+					if (flat) {
+						// Conservative for flat items: never below, at most a jitter above.
+						assertTrue(lowest >= ItemPhysicsMath.GROUND_GAP - 1e-4 && lowest <= ItemPhysicsMath.GROUND_GAP + 0.08F, at + ": " + lowest);
+					} else {
+						assertEquals(ItemPhysicsMath.GROUND_GAP, lowest, 1e-4, at);
+					}
+				}
+			}
+		}
+	}
+
+	@Test
+	void clusterDropIsZeroForOneCopyAndForFlatItemsLyingDown() {
+		Random random = new Random(5);
+		assertEquals(0, ItemPhysicsMath.clusterDrop(0.3F, false, 1, random::nextFloat));
+
+		for (int i = 0; i < 50; i++) {
+			assertEquals(0, ItemPhysicsMath.clusterDrop(ItemPhysicsMath.LAY_FLAT_PITCH, true, 5, random::nextFloat), 1e-6);
+		}
+	}
+
 	@Test
 	void layingFlatPutsTheFrontFaceUp() {
 		Vector3f front = new Vector3f(0, 0, 1);
@@ -100,7 +161,8 @@ class ItemPhysicsMathTest {
 		assertEquals(0, ItemPhysicsMath.step(1.0F, Float.NaN, 10, true, 0.5F, PI), "landed on the first frame: flat at once");
 		assertEquals(1.0F, ItemPhysicsMath.step(1.0F, Float.NaN, 10, false, 0.5F, PI), "in the air on the first frame: keep the angle");
 		assertEquals(0.25F, ItemPhysicsMath.step(0, 10, 10.5F, false, 0.5F, PI), 1e-6, "half a tick");
-		assertEquals(1.5F, ItemPhysicsMath.step(1.0F, 10, 400, false, 0.5F, PI), 1e-6, "a long gap counts as one tick");
+		assertEquals(3.0F, ItemPhysicsMath.step(1.0F, 10, 400, false, 0.5F, PI), 1e-6, "a long gap counts as four ticks");
+		assertEquals(2.0F, ItemPhysicsMath.step(1.0F, 10, 12, false, 0.5F, PI), 1e-6, "10 FPS keeps real time");
 		assertEquals(0.3F, ItemPhysicsMath.step(0.3F, 5, 5, false, 0.5F, PI), "paused");
 		float wrapped = ItemPhysicsMath.step(6.2F, 10, 11, false, 0.5F, PI);
 		assertTrue(wrapped >= 0 && wrapped < 2 * PI);

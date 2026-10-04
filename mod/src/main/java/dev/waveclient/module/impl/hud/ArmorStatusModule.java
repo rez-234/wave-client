@@ -9,7 +9,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
-import dev.waveclient.hud.Anchor;
+import dev.waveclient.hud.HudDefaults;
 import dev.waveclient.hud.CachedText;
 import dev.waveclient.hud.HudModule;
 import dev.waveclient.setting.BooleanSetting;
@@ -96,7 +96,7 @@ public final class ArmorStatusModule extends HudModule {
 	private int ticksSinceMeasure;
 
 	public ArmorStatusModule() {
-		super("armor_status", "Armor Status", "Shows your armor and held item with their durability.", Anchor.MIDDLE_RIGHT, -4, 0);
+		super("armor_status", "Armor Status", "Shows your armor and held item with their durability.", HudDefaults.ARMOR_STATUS);
 
 		for (int i = 0; i < SLOTS.length; i++) {
 			texts[i] = new CachedText();

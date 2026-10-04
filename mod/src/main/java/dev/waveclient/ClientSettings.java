@@ -39,5 +39,5 @@ public final class ClientSettings extends SettingContainer {
 			.describe("Inter matches the launcher. At GUI scale 1 (too small for Inter) and a few very large scales (11, 13, 17...) the Minecraft font is always used."));
 
 	public final BooleanSetting hideHudWithDebug = add(new BooleanSetting("hideHudWithDebug", "Hide HUD with F3", true)
-			.describe("Hide Wave Client HUD elements while the F3 debug screen is open."));
+			.describe("Hide Wave Client HUD elements while the F3 debug screen is open. The scoreboard and potion effects stay when they replace vanilla's, as vanilla's do."));
 }

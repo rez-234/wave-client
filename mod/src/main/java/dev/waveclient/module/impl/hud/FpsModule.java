@@ -2,7 +2,7 @@ package dev.waveclient.module.impl.hud;
 
 import net.minecraft.client.Minecraft;
 
-import dev.waveclient.hud.Anchor;
+import dev.waveclient.hud.HudDefaults;
 import dev.waveclient.hud.TextHudModule;
 import dev.waveclient.setting.EnumSetting;
 
@@ -31,7 +31,7 @@ public final class FpsModule extends TextHudModule {
 	private int shownFps = -1;
 
 	public FpsModule() {
-		super("fps", "FPS", "Shows your frames per second.", Anchor.TOP_LEFT, 4, 4);
+		super("fps", "FPS", "Shows your frames per second.", HudDefaults.FPS);
 		setDefaultEnabled(true);
 	}
 

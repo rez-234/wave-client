@@ -51,7 +51,7 @@ wave-client/
 | `setting` | `Setting` (sealed), `BooleanSetting`, `SliderSetting`, `ColorSetting`, `KeybindSetting`, `EnumSetting` |
 | `input` | `Keybind`, `KeybindDispatcher`, `KeyMode`, `HoldToggle`, `ClickInput` |
 | `config` | `ConfigManager`, `ConfigSerializer`, `ConfigMigrations`, `AtomicFiles` |
-| `hud` | `HudModule`, `TextHudModule`, `HudPosition`, `Anchor`, `HudLayer`, `SnapEngine`, `CachedText`, `CachedComponent`, `VanillaElementGate` |
+| `hud` | `HudModule`, `TextHudModule`, `HudPosition`, `Anchor`, `HudLayer`, `SnapEngine`, `CachedText`, `CachedComponent`, `VanillaElementGate`, `HudDefaults` |
 | `gui` | `theme` (tokens, fonts), `render` (`Painter`, `Text`), `widget`, `menu` (`ModMenuScreen` and its pages), `screen` (`HudEditorScreen`), `PauseMenuButton` |
 | `command` | `/wave` client command (list, toggle, get/set settings, save/reload) |
 | `compat` | Optional integrations (Mod Menu, Iris's shader-pack check), used only when present |
@@ -109,8 +109,9 @@ always processed so held keys never get stuck. Binds are stored as `key:<glfw co
 
 - One Fabric HUD layer, attached before the vanilla chat layer, draws all active HUD modules.
   It inherits F1 hiding, draws under chat and the tab list, and hides while F3 is open
-  (client setting `hideHudWithDebug`). Vanilla elements we replace (crosshair, status effects,
-  scoreboard) go through Fabric API's `replaceElement`.
+  (client setting `hideHudWithDebug`), except elements that stand in for a vanilla one vanilla
+  keeps under F3 (scoreboard, potion effects that hide vanilla's icons). Vanilla elements we
+  replace (crosshair, status effects, scoreboard) go through Fabric API's `replaceElement`.
 - **Position:** one of 9 anchors, plus an offset in GUI-scaled pixels from that anchor to
   the same point on the element, plus a scale from 0.5 to 3.0. The anchor is chosen from
   where the element is dropped. Elements are clamped on screen when drawn.
@@ -192,7 +193,7 @@ Menu's Configure button. It uses the same design tokens as the launcher.
 | Motion blur | `GameRenderer.render` after `LevelRenderer.doEntityOutline` (world finished, GUI not yet drawn): one full-screen pass blending the frame with a kept 8-bit image, frame-time weighted. Own unregistered pipeline, so a broken shader turns it off instead of failing a reload. Off while an Iris shader pack is in use (Iris API by reflection) |
 | Chat tweaks | `ChatComponent.addMessage`: the message argument at HEAD (timestamp) and the `logChatMessage` call (log stays unstamped); the history constant in `addMessageToQueue` and `addMessageToDisplayQueue`; the `clearMessages` call in `Gui.onDisconnected` (keep chat); `ChatScreen.mouseClicked` at its `button()` call (copy), hit-testing through `captureClickableText` |
 | Scoreboard | `replaceElement(SCOREBOARD)` gate plus a HUD module drawn by the HUD layer; the scoreboard is read once a tick; no mixins |
-| Item physics | `ItemEntityRenderer.extractRenderState` TAIL (decides the pose), and `@WrapOperation` on the single `translate` and `mulPose` in `submit`; the tumble angle lives in `@Unique` fields on `ItemEntity` |
+| Item physics | `ItemEntityRenderer.extractRenderState` TAIL (decides the pose, replays the stack's seeded copy offsets and measures the fluid surface), and `@WrapOperation` on the single `translate` and `mulPose` in `submit`; the tumble angle lives in `@Unique` fields on `ItemEntity` |
 
 ### Compatibility
 

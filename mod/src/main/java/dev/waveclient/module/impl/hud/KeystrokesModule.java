@@ -15,7 +15,7 @@ import org.joml.Matrix3x2fStack;
 import org.lwjgl.glfw.GLFW;
 
 import dev.waveclient.WaveClient;
-import dev.waveclient.hud.Anchor;
+import dev.waveclient.hud.HudDefaults;
 import dev.waveclient.hud.CachedText;
 import dev.waveclient.hud.HudModule;
 import dev.waveclient.input.ClickInput;
@@ -29,9 +29,10 @@ import dev.waveclient.util.ColorMath;
 /**
  * Movement keys, mouse buttons and jump, lit up while pressed.
  *
- * <p>Keys are read from the keyboard and mouse each frame, so a quick tap always shows and a
- * toggled sneak or sprint doesn't look held. Labels follow your controls and are rebuilt only
- * when a binding changes.
+ * <p>Keys are read from the keyboard and mouse each frame, so a quick tap always shows; with
+ * "Show toggled keys as held" a toggled attack or use (Accessibility settings) lights up too.
+ * Labels follow your controls, with short names for long ones such as the arrow keys, and are
+ * rebuilt only when a binding changes.
  */
 // Settings register change listeners that capture 'this', but they only run on later edits.
 @SuppressWarnings("this-escape")
@@ -49,7 +50,7 @@ public final class KeystrokesModule extends HudModule {
 			.visibleWhen(() -> showMouse.get() && showCps.get()));
 	public final BooleanSetting showSpace = add(new BooleanSetting("showSpace", "Jump bar", true));
 	public final BooleanSetting showToggleState = add(new BooleanSetting("showToggleState", "Show toggled keys as held", false)
-			.describe("Light up keys the game treats as held, such as a toggled sneak, instead of the keys your fingers are on."));
+			.describe("Light up keys the game treats as held, such as a toggled attack or use from the Accessibility settings, instead of the keys your fingers are on."));
 	public final SliderSetting keySize = add(new SliderSetting("keySize", "Key size", 20, 14, 32, 1));
 	public final SliderSetting gap = add(new SliderSetting("gap", "Gap", 2, 0, 4, 1));
 	public final BooleanSetting animate = add(new BooleanSetting("animate", "Fade presses", true));
@@ -64,6 +65,8 @@ public final class KeystrokesModule extends HudModule {
 	private final InputConstants.Key[] boundKeys = new InputConstants.Key[KEYS];
 	private final CachedText[] labels = new CachedText[KEYS];
 	private final float[] labelScale = new float[KEYS];
+	/** Labels still wider than their key at the smallest scale, drawn clipped to it. */
+	private final boolean[] labelClipped = new boolean[KEYS];
 	private final float[] pressed = new float[KEYS];
 	private final CachedText leftCps = new CachedText();
 	private final CachedText rightCps = new CachedText();
@@ -75,7 +78,7 @@ public final class KeystrokesModule extends HudModule {
 	private long lastFrameNanos;
 
 	public KeystrokesModule() {
-		super("keystrokes", "Keystrokes", "Shows your movement keys and mouse buttons as you press them.", Anchor.MIDDLE_LEFT, 4, 0);
+		super("keystrokes", "Keystrokes", "Shows your movement keys and mouse buttons as you press them.", HudDefaults.KEYSTROKES);
 
 		for (int i = 0; i < KEYS; i++) {
 			labels[i] = new CachedText();
@@ -143,6 +146,7 @@ public final class KeystrokesModule extends HudModule {
 
 				int room = cell.width() - 4;
 				labelScale[i] = labels[i].width() > room ? Math.max(0.5F, (float) room / labels[i].width()) : 1.0F;
+				labelClipped[i] = labels[i].width() * labelScale[i] > cell.width();
 			}
 		}
 
@@ -199,8 +203,16 @@ public final class KeystrokesModule extends HudModule {
 			};
 		}
 
-		if (bound.getValue() == InputConstants.UNKNOWN.getValue() && bound.getType() == InputConstants.Type.KEYSYM) {
-			return "-";
+		if (bound.getType() == InputConstants.Type.KEYSYM) {
+			if (bound.getValue() == InputConstants.UNKNOWN.getValue()) {
+				return "-";
+			}
+
+			String shortName = KeyLabels.shortName(bound.getValue());
+
+			if (shortName != null) {
+				return shortName;
+			}
 		}
 
 		return bound.getDisplayName().getString();
@@ -261,7 +273,14 @@ public final class KeystrokesModule extends HudModule {
 			// Label and a half-size CPS line under it, centered together.
 			int block = cpsText != null ? GLYPH_HEIGHT + 2 + 4 : GLYPH_HEIGHT;
 			int top = cell.y() + (cell.height() - block) / 2;
-			drawCentered(graphics, font, labels[i], labelScale[i], cell.x() + cell.width() / 2.0F, top, color, shadow);
+			if (labelClipped[i]) {
+				// Rare (an unusual key name), so the scissor's allocation doesn't matter.
+				graphics.enableScissor(cell.x(), cell.y(), cell.x() + cell.width(), cell.y() + cell.height());
+				drawCentered(graphics, font, labels[i], labelScale[i], cell.x() + cell.width() / 2.0F, top, color, shadow);
+				graphics.disableScissor();
+			} else {
+				drawCentered(graphics, font, labels[i], labelScale[i], cell.x() + cell.width() / 2.0F, top, color, shadow);
+			}
 
 			if (cpsText != null) {
 				drawCentered(graphics, font, cpsText, 0.5F, cell.x() + cell.width() / 2.0F, top + GLYPH_HEIGHT + 2, color, shadow);

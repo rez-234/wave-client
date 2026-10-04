@@ -5,7 +5,7 @@ import java.time.LocalTime;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 
-import dev.waveclient.hud.Anchor;
+import dev.waveclient.hud.HudDefaults;
 import dev.waveclient.hud.TextHudModule;
 import dev.waveclient.setting.BooleanSetting;
 import dev.waveclient.setting.EnumSetting;
@@ -47,7 +47,7 @@ public final class ClockModule extends TextHudModule {
 	private int shownGameKey = -1;
 
 	public ClockModule() {
-		super("clock", "Clock", "Shows the time of day, in real life or in the game.", Anchor.TOP_RIGHT, -4, 4);
+		super("clock", "Clock", "Shows the time of day, in real life or in the game.", HudDefaults.CLOCK);
 	}
 
 	@Override

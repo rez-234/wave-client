@@ -52,15 +52,16 @@ public final class HudLayer implements HudElement {
 			return;
 		}
 
-		if (settings.hideHudWithDebug.get() && minecraft.debugEntries.isOverlayVisible()) {
-			return;
-		}
-
+		boolean debug = hiddenByDebug(settings);
 		HudModule[] elements = refresh();
 		int screenWidth = graphics.guiWidth();
 		int screenHeight = graphics.guiHeight();
 
 		for (HudModule element : elements) {
+			if (debug && !element.shownWithDebugScreen()) {
+				continue;
+			}
+
 			int width = element.width();
 			int height = element.height();
 
@@ -68,6 +69,14 @@ public final class HudLayer implements HudElement {
 				draw(graphics, element, element.position.pixelLeft(screenWidth, width), element.position.pixelTop(screenHeight, height));
 			}
 		}
+	}
+
+	/**
+	 * Whether F3 is hiding Wave's elements right now, except those that stand in for a vanilla
+	 * element ({@link HudModule#shownWithDebugScreen()}).
+	 */
+	private static boolean hiddenByDebug(ClientSettings settings) {
+		return settings.hideHudWithDebug.get() && Minecraft.getInstance().debugEntries.isOverlayVisible();
 	}
 
 	/**

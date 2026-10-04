@@ -41,18 +41,18 @@ The dev game directory is `mod/run/`, and the mod's config is written to
 | FPS | `fps` | Yes | Frames per second in the top-left corner. |
 | Coordinates | `coordinates` | No | Your X, Y and Z position, as block coordinates or with decimals. |
 | CPS | `cps` | No | Clicks per second. Counts mouse buttons, or whatever attack and use are bound to. Clicks in menus don't count. |
-| Ping | `ping` | No | Your latency as the server reports it (the tab list's number). |
+| Ping | `ping` | No | Your latency as the server reports it (the tab list's number). Hidden in your own world, including when it is open to LAN. |
 | Direction | `direction` | No | The way you're facing (North, or N with intercardinals), the axis it points along, and optionally degrees. |
 | Clock | `clock` | No | Real time, game time or both. 12 or 24 hour. |
-| Keystrokes | `keystrokes` | No | W, A, S, D, mouse buttons with CPS, and jump, lit while pressed. Follows your controls. |
+| Keystrokes | `keystrokes` | No | W, A, S, D, mouse buttons with CPS, and jump, lit while pressed. Follows your controls, with short labels for long key names (arrows, keypad). |
 | Armor Status | `armor_status` | No | Armor and held item with durability, colored like the durability bar. |
 | Potion Effects | `potion_effects` | No | Active effects with level and time left. Hides the vanilla icons. Effects a server hides stay hidden. |
-| Toggle Sprint | `toggle_sprint` | No | Press sprint once to keep sprinting; optional toggle sneak. Shows a status line. Never changes your controls. |
+| Toggle Sprint | `toggle_sprint` | No | Press sprint once to keep sprinting; optional toggle sneak. Shows a status line. Never changes your controls. With sprint on Ctrl, Ctrl+Q and Ctrl+middle-click don't toggle it. |
 | Freelook | `freelook` | No | Hold Left Alt to look around your character without turning. Blocked on Hypixel. |
 | Snaplook | `snaplook` | No | Third person (front or back) while a key is held, like holding F5. Allowed everywhere. |
 | Custom Crosshair | `crosshair` | No | Cross, T, circle, square or dot, with gap, thickness, center dot, outline, and the vanilla invert look or a solid color. Shows only when the vanilla crosshair would. The defaults draw the vanilla crosshair. |
 | Motion Blur | `motion_blur` | No | Blends recent frames. Only the world is blurred, never the HUD or menus. The trail lasts the same at any frame rate. Off while an Iris shader pack is in use. |
-| Item Physics | `item_physics` | No | Dropped items lie flat on the ground and tumble as they fall. |
+| Item Physics | `item_physics` | No | Dropped items lie flat on the ground (or on water and lava) and tumble as they fall. |
 | Scoreboard | `scoreboard` | No | The sidebar as a HUD element you can move and resize, with the red score numbers hidden. |
 | Chat | `chat` | No | Timestamps on new messages, chat that stays when you leave a world or server, up to 2000 messages of history, and Ctrl/Cmd-click a message to copy it. |
 
@@ -100,11 +100,15 @@ Press **Right Shift** in a world to open the HUD editor (change the key with
 - **Esc**, **Done** or a tap of **Right Shift** closes the editor; positions are saved immediately.
 
 Positions are stored relative to the nearest screen corner, edge or center, so elements stay put
-when you resize the window or change the GUI scale.
+when you resize the window or change the GUI scale. The default positions don't overlap each
+other, a boss bar, the hotbar or a full 15-line sidebar at the automatic GUI scale of 1080p and
+720p (text on the left, clock top right, keystrokes and armor bottom right, direction under the
+boss bar).
 
 Every module also has a `toggleKey` setting (unbound by default), for example
-`/wave set fullbright toggleKey b`. HUD elements are hidden while F3 is open; change that
-with `/wave set client hideHudWithDebug off`.
+`/wave set fullbright toggleKey b`. HUD elements are hidden while F3 is open, except the
+scoreboard and potion effects when they replace vanilla's (vanilla keeps those under F3); change
+that with `/wave set client hideHudWithDebug off`.
 
 ### In-game command
 

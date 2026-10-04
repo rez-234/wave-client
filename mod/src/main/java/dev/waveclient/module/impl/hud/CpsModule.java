@@ -1,7 +1,7 @@
 package dev.waveclient.module.impl.hud;
 
 import dev.waveclient.WaveClient;
-import dev.waveclient.hud.Anchor;
+import dev.waveclient.hud.HudDefaults;
 import dev.waveclient.hud.TextHudModule;
 import dev.waveclient.input.ClickInput;
 import dev.waveclient.setting.BooleanSetting;
@@ -37,7 +37,7 @@ public final class CpsModule extends TextHudModule {
 	private int shownRight = -1;
 
 	public CpsModule() {
-		super("cps", "CPS", "Shows how many times you click per second.", Anchor.TOP_LEFT, 4, 60);
+		super("cps", "CPS", "Shows how many times you click per second.", HudDefaults.CPS);
 	}
 
 	@Override
