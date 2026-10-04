@@ -60,6 +60,9 @@ jobs:
         run: npm ci
       - name: Build
         run: npm run build
+      - name: Download Electron
+        # Electron 44 fetches its binary on first use rather than on install.
+        run: npx install-electron
       - name: Install a virtual display
         run: sudo apt-get update && sudo apt-get install -y xvfb
       - name: Enable Chromium's sandbox helper

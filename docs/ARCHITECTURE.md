@@ -206,30 +206,62 @@ Menu's Configure button. It uses the same design tokens as the launcher.
 
 ## Launcher
 
-### Main-process services
+`launcher/` is an electron-vite project (Electron 44, React 19, TypeScript strict, Vitest).
+All network, file and process work happens in the main process; the renderer only talks to the
+typed `window.wave` API (`src/shared/ipc.ts`).
 
-| Service | Responsibility |
+### Main-process modules
+
+| Module | Responsibility |
 |---|---|
-| auth | Microsoft OAuth (auth code + PKCE in system browser, loopback redirect; device code fallback) → Xbox Live → XSTS → Minecraft token → entitlements + profile |
-| accounts | Tokens encrypted with Electron `safeStorage`. Not saved if Linux falls back to `basic_text`. |
-| versions | Version manifest v2, version JSON, rules, `inheritsFrom` merge |
-| downloads | Parallel queue, retries, `.part` files, SHA1 verification, atomic rename, repair |
-| java | Mojang Java runtime manifest, picked by the version's `javaVersion` |
-| fabric | Fabric meta loader profile; our mod + pinned Fabric API injected via `-Dfabric.addMods` |
-| launch | Argument templating, classpath, JVM args, spawn; tokens redacted everywhere |
-| logs | Structured log4j2 XML events → filter, search, copy, export |
-| crash | Crash report, `hs_err_pid*.log`, last 500 lines, suspected mods |
-| profiles / mods | Per-profile instance folders; `fabric.mod.json` scanning and compatibility checks |
+| `net/http` | fetch wrapper (Electron `net.fetch`, so the system proxy applies): timeouts, cancellation, `Retry-After`-aware retries for idempotent requests; errors never echo request bodies or query strings |
+| `net/downloads` | Parallel queue: `.part` file, size + SHA-1 check, atomic rename, per-file retries, skip valid files, re-hash everything in repair mode |
+| `auth/microsoft` | Microsoft identity platform v2 (`consumers`): auth code + PKCE S256 in the system browser with a loopback redirect (listen on 127.0.0.1, redirect `http://localhost:<port>`, state and Host checked); device code fallback; rotated refresh tokens |
+| `auth/xbox-minecraft` | Xbox Live user token (`d=` ticket) → XSTS for `rp://api.minecraftservices.com/` (XErr codes mapped to messages) → `login_with_xbox` ("Invalid app registration" recognised, never retried) → profile (404 explained via entitlements) |
+| `auth/service` | Sign-in chain; refresh before launch when < 12 h of the 24 h token remain, one refresh per account at a time, rotated refresh token saved first, `invalid_grant` or a changed app id → "sign in again", still-valid token used during an outage |
+| `accounts/store` | `accounts.dat` encrypted with `safeStorage`; not written at all when only Linux's insecure `basic_text` backend exists (session-only accounts) |
+| `game/version` | Version JSON rules (last match wins, `x86` = 32-bit JVM, features), `inheritsFrom` merge (scalars from the child, arguments parent then child, libraries child first and de-duplicated by group:artifact:classifier, as Fabric's Knot refuses duplicate ASM), argument templating |
+| `game/java` | Mojang's Java runtime index and per-component manifests (verified), files, executable bits, links kept inside the runtime; clear error where Mojang ships none (32-bit, Linux on ARM); probes a user-chosen Java |
+| `game/fabric`, `game/client-mods` | Fabric meta profile (cached for offline use; Maven `.sha1` fetched for the loader and intermediary, which the profile leaves unhashed); `client/` holds exactly our mod and the pinned Fabric API for `-Dfabric.addMods` |
+| `game/assets` | Asset index (always re-hashed: Mojang changed index 29 without changing its id) and objects |
+| `game/install` | The whole install in order, with progress per phase |
+| `game/launch-command` | JVM args from the version (with `-cp`), log4j config, `-Xms/-Xmx`, `-Dfabric.addMods`, user JVM args last (HotSpot keeps the last copy of a flag), main class, game args; every placeholder must be filled; `--xuid` from the token's claim, `--clientId` a per-install id |
+| `game/process`, `game/log-parser`, `game/crash` | Spawn without a shell, parse log4j XML events from stdout (plus plain lines), redact the token, keep 5000 lines; on exit find the crash report, `hs_err` log, Fabric resolution errors and suspect mods |
+| `controller`, `ipc`, `index` | One game at a time; IPC calls accepted only from the app's own window and page; window hardening |
+
+Pinned versions (`game/pins.ts`, checked against `mod/gradle.properties` by a test): Minecraft
+1.21.11, Fabric Loader 0.19.5, Fabric API 0.141.6+1.21.11.
 
 ### Disk layout
 
 ```
 %APPDATA%/WaveClient/
-  launcher.json, accounts.dat (encrypted)
+  launcher.json, accounts.dat (encrypted), install-id, logs/launcher.log
   shared/{versions,libraries,assets,runtimes}/
   client/                      our mod + managed Fabric API
-  instances/<profile>/{profile.json, mods/, config/, saves/, resourcepacks/, logs/, crash-reports/}
+  instances/<profile>/         game directory (mods/, config/, saves/, logs/, crash-reports/ ...)
+  electron/                    Chromium's own data
 ```
+
+### Security
+
+- Window: `contextIsolation`, `sandbox`, no `nodeIntegration`; the preload is one CommonJS file
+  exposing only `window.wave`. New windows, navigation away from the app page, webviews and
+  permission requests are denied (clipboard writes allowed for Copy buttons). Strict CSP in the
+  page.
+- IPC: every handler checks the sender is the main window's top frame on the app's own URL and
+  validates arguments; only plain messages cross back. Help links open in the browser only for
+  https Microsoft, Xbox and Minecraft hosts.
+- Tokens: never sent to the renderer, never logged (redacted from game output and errors),
+  stored only through the OS keychain.
+
+### Tests
+
+Unit tests use real Mojang/Fabric metadata as fixtures (`launcher/test/fixtures`). CI
+(`.github/workflows/launcher.yml`) also starts the real Electron app under xvfb with the
+sandbox on, and runs an end-to-end job that installs 1.21.11 + Fabric + Java + assets + our mod
+from the official servers with the launcher's own code and launches the game until the mod
+initializes.
 
 ### Installer
 
@@ -243,12 +275,6 @@ Menu's Configure button. It uses the same design tokens as the launcher.
   releases on tags).
 - Unsigned until a code-signing certificate is added, so Windows SmartScreen will warn on
   first run.
-
-### Security
-
-`contextIsolation`, `sandbox`, no `nodeIntegration`, a narrow typed preload API and a strict
-CSP. All network, filesystem and process work runs in the main process. The renderer never
-sees tokens.
 
 ## Order of work
 

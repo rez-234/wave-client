@@ -10,7 +10,7 @@ for the full design.
 | Folder | Contents |
 |---|---|
 | `mod/` | Fabric client mod (Java 21, Gradle, Fabric Loom, Mojang mappings) |
-| `launcher/` | Electron + TypeScript launcher and Windows installer (coming in steps 6 to 8) |
+| `launcher/` | Electron + TypeScript + React launcher (Windows installer comes in step 8) |
 | `docs/` | Architecture and decisions |
 
 ## Building the mod
@@ -33,6 +33,66 @@ On Windows use `gradlew.bat` instead of `./gradlew`.
 The first `runClient` downloads Minecraft and its assets, which takes a few minutes.
 The dev game directory is `mod/run/`, and the mod's config is written to
 `mod/run/config/waveclient/config.json`.
+
+## The launcher
+
+The launcher signs in with a Microsoft account, installs Minecraft 1.21.11, Fabric Loader,
+Fabric API and Wave Client, and starts the game. Nothing from Minecraft is bundled: game files,
+libraries, assets and Mojang's Java runtime are downloaded from Mojang's servers (and Fabric's
+from Fabric's) when you first press Play, checked against their published SHA-1 hashes, and
+shared by every profile. Later launches only re-check sizes; **Repair game files** re-hashes
+everything.
+
+Requirements: Node.js 22.12 or newer.
+
+```sh
+cd launcher
+npm install
+npm run dev          # the launcher with hot reload (expects mod/build/libs/waveclient-*.jar: run ./gradlew build in mod/ first)
+npm test             # unit tests
+npm run typecheck
+npm run build        # production build into launcher/out/
+```
+
+Data lives in `%APPDATA%\WaveClient` on Windows (`~/Library/Application Support/WaveClient` on
+macOS, `~/.config/WaveClient` on Linux):
+
+| Path | Contents |
+|---|---|
+| `shared/versions`, `shared/libraries`, `shared/assets`, `shared/runtimes` | Minecraft, Fabric and Java, shared by all profiles |
+| `client/` | Wave Client and Fabric API, loaded with `-Dfabric.addMods` |
+| `instances/default/` | The game folder: saves, options, `mods/` for your own mods, logs, crash reports |
+| `accounts.dat` | Signed-in accounts, encrypted with the OS keychain |
+| `launcher.json` | Launcher settings (no secrets) |
+| `logs/launcher.log` | The launcher's own log (never contains tokens) |
+
+### Microsoft sign-in setup
+
+Signing in needs an Azure app registration that Mojang has approved for Minecraft. Until a
+build has one, the launcher shows that sign-in isn't set up instead of trying.
+
+1. In the [Azure portal](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade),
+   register an app for **personal Microsoft accounts**.
+2. Under **Authentication**, add the platform **Mobile and desktop applications** with the
+   redirect URI `http://localhost` (any port works), and set **Allow public client flows** to
+   **Yes** (needed for "Use a code instead"). No client secret is needed.
+3. Ask Mojang to approve the app for Minecraft at <https://aka.ms/mce-reviewappid>. Until they
+   do, Microsoft and Xbox sign-in succeed but Minecraft rejects the app ("Invalid app
+   registration"); the launcher says so.
+4. Build with the app's **Application (client) ID**: `MAIN_VITE_MSA_CLIENT_ID=<id> npm run build`
+   (or set `WAVE_MSA_CLIENT_ID=<id>` when running, for development). The ID is not a secret.
+
+### How signing in works
+
+Your browser opens Microsoft's sign-in page; the launcher never sees your password. It receives
+a one-time code on `http://localhost` (PKCE), then exchanges it for Xbox Live and Minecraft
+tokens and reads your Minecraft profile. If your browser can't reach the launcher, **Use a code
+instead** shows a code to enter at microsoft.com/link.
+
+Tokens are encrypted with the OS keychain (Windows DPAPI, macOS Keychain, Linux libsecret or
+KWallet) before they are written. On a Linux system without a keychain, accounts are kept for
+the session only. The Minecraft token is refreshed before a launch when less than 12 hours of
+it are left, so it lasts the whole play session.
 
 ## Modules
 
