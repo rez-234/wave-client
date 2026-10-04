@@ -24,6 +24,8 @@ cd mod
 ./gradlew test         # unit tests only
 ./gradlew runClient    # starts Minecraft 1.21.11 with the mod loaded (dev account, offline)
 ./gradlew runClient -Pcompat   # same, with Sodium, Lithium, Iris and Mod Menu loaded too
+./gradlew runClientGameTest    # boots the game, creates a test world and checks every module's
+                               # hooks; screenshots land in build/clientgametest/screenshots/
 ```
 
 On Windows use `gradlew.bat` instead of `./gradlew`.
