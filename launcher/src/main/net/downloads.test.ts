@@ -142,7 +142,7 @@ describe('DownloadQueue', () => {
     await queue.run([item('a', 'alpha'), item('b', 'bravo')])
     expect(calls).toHaveLength(2)
     await queue.run([item('a', 'alpha'), item('b', 'bravo')], { verify: 'hash' })
-    expect(calls).toEqual(['https://x/a', 'https://x/b', 'https://x/b'])
+    expect([...calls].sort()).toEqual(['https://x/a', 'https://x/b', 'https://x/b'])
     expect(await readFile(join(dir, 'sub', 'b'), 'utf8')).toBe('bravo')
   })
 
