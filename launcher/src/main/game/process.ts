@@ -20,6 +20,8 @@ export interface GameSessionOptions {
   onExit: (exit: GameExit) => void
   spawnFn?: typeof spawn
   now?: () => number
+  /** Numbers lines; shared with the launcher's own messages so numbering never restarts. */
+  nextSeq?: () => number
 }
 
 /**
@@ -29,6 +31,7 @@ export interface GameSessionOptions {
 export class GameSession {
   private readonly lines: LogLine[] = []
   private seq = 0
+  private readonly nextSeq: () => number
   private child: ChildProcess | null = null
   private readonly startedAt: number
   private exited = false
@@ -38,6 +41,7 @@ export class GameSession {
     private readonly options: GameSessionOptions
   ) {
     this.startedAt = (options.now ?? Date.now)()
+    this.nextSeq = options.nextSeq ?? (() => this.seq++)
   }
 
   get running(): boolean {
@@ -119,7 +123,7 @@ export class GameSession {
     }
 
     const out: LogLine[] = parsed.map((line) => ({
-      seq: this.seq++,
+      seq: this.nextSeq(),
       time: line.time,
       level: fromStderr && line.level === 'INFO' && line.thread === null ? 'WARN' : line.level,
       thread: line.thread,

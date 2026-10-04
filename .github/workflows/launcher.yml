@@ -1,0 +1,119 @@
+name: launcher
+
+on:
+  push:
+    paths:
+      - 'launcher/**'
+      - 'shared/**'
+      - 'mod/**'
+      - '.github/workflows/launcher.yml'
+  pull_request:
+    paths:
+      - 'launcher/**'
+      - 'shared/**'
+      - 'mod/**'
+      - '.github/workflows/launcher.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: launcher
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: launcher/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+
+  smoke:
+    # Starts the built app with the real Electron (sandbox on) and checks the window, the preload
+    # bridge and the API work, then exits.
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: launcher
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: launcher/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Install a virtual display
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Enable Chromium's sandbox helper
+        # Ubuntu 24.04 restricts unprivileged user namespaces, so Chromium needs its setuid helper.
+        run: sudo chown root:root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+      - name: Smoke test
+        run: xvfb-run -a npx electron .
+        env:
+          WAVE_SMOKE_TEST: '1'
+          WAVE_LAUNCHER_HOME: ${{ runner.temp }}/wave-smoke
+
+  e2e:
+    # The launcher's install and launch code against Mojang's and Fabric's real servers: installs
+    # 1.21.11, Fabric, Java, assets, Fabric API and our mod, then starts the game.
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Build the mod
+        working-directory: mod
+        run: ./gradlew build -x test --console=plain
+      - name: Find the mod jar
+        run: echo "WAVE_MOD_JAR=$(ls $GITHUB_WORKSPACE/mod/build/libs/waveclient-*.jar | grep -v -- '-sources' | head -n 1)" >> "$GITHUB_ENV"
+      - name: Set up Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: launcher/package-lock.json
+      - name: Install dependencies
+        working-directory: launcher
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - name: Install a virtual display and software OpenGL
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri
+      - name: Install and launch
+        working-directory: launcher
+        run: xvfb-run -a -s "-screen 0 1280x720x24" npm run test:e2e
+        env:
+          WAVE_E2E_HOME: ${{ runner.temp }}/wave-e2e
+      - name: Upload game logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: launcher-e2e-logs
+          path: |
+            ${{ runner.temp }}/wave-e2e/instances/default/logs/
+            ${{ runner.temp }}/wave-e2e/instances/default/crash-reports/
+          if-no-files-found: ignore

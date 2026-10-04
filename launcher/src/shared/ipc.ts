@@ -18,6 +18,8 @@ export const IpcChannels = {
   logsSnapshot: 'logs:snapshot',
   logsExport: 'logs:export',
   openFolder: 'shell:open-folder',
+  openExternal: 'shell:open-external',
+  settingsPickJava: 'settings:pick-java',
   appInfo: 'app:info',
   /** Main → renderer events. */
   eventSignIn: 'event:sign-in',
@@ -47,6 +49,7 @@ export type SignInEvent =
   | { kind: 'cancelled' }
   | { kind: 'error'; message: string; detail?: string; helpUrl?: string }
 
+/** 'close' hides the launcher while the game runs and quits when it exits (it comes back if the game crashes). */
 export type AfterLaunch = 'keep-open' | 'minimize' | 'close'
 
 export interface LauncherSettings {
@@ -131,6 +134,8 @@ export interface AppInfo {
   signInAvailable: boolean
   /** False when the OS has no secure storage (e.g. Linux without a keyring): accounts aren't remembered. */
   secureStorage: boolean
+  /** Installed RAM, for the memory slider (the launcher allows up to 75% of it). */
+  totalMemoryMb: number
   platform: 'win32' | 'darwin' | 'linux' | (string & {})
 }
 
@@ -139,6 +144,8 @@ export interface WaveApi {
   app: {
     info(): Promise<AppInfo>
     openFolder(kind: FolderKind): Promise<void>
+    /** Opens an https link from the allow-list (Microsoft, Xbox, Minecraft help pages) in the browser. */
+    openExternal(url: string): Promise<void>
   }
   accounts: {
     list(): Promise<AccountView[]>
@@ -152,6 +159,8 @@ export interface WaveApi {
   settings: {
     get(): Promise<LauncherSettings>
     set(settings: Partial<LauncherSettings>): Promise<LauncherSettings>
+    /** Shows a file picker for a Java executable and returns the chosen path (checked), or null. */
+    pickJava(): Promise<{ path: string; version: string } | null>
   }
   game: {
     launch(options?: { repair?: boolean }): Promise<void>
