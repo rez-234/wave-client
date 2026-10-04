@@ -41,6 +41,7 @@ public final class WaveClientGameTest implements FabricClientGameTest {
 
 	@Override
 	public void runTest(ClientGameTestContext context) {
+		WorldLoadProbe.register();
 		context.runOnClient(client -> {
 			for (Module module : WaveClient.get().modules().all()) {
 				module.setEnabled(true);

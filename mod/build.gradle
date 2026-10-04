@@ -65,6 +65,9 @@ loom {
 			name = 'Client Game Test'
 			source sourceSets.gametest
 			vmArg '-Dfabric.client.gametest'
+			// As Fabric API's own CI: with packet tracking on, joining the test world stalled in
+			// most CI runs. The test waits several ticks after every server command instead.
+			vmArg '-Dfabric.client.gametest.disableNetworkSynchronizer=true'
 			runDir 'build/clientgametest'
 		}
 	}
