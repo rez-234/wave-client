@@ -299,10 +299,21 @@ async function findBundledModJar(): Promise<string> {
 /** CI check: the window loads, the preload bridge exists and the API answers, then exit. */
 async function runSmokeTest(): Promise<void> {
   try {
+    // Also a rejected call: with no account, Play is refused, and the page must see only the message.
     const result = (await mainWindow?.webContents.executeJavaScript(
-      `(async () => { const info = await window.wave.app.info(); return { bridge: typeof window.wave, keys: Object.keys(window.wave).sort().join(','), mc: info.minecraftVersion, root: document.getElementById('root')?.childElementCount ?? -1 } })()`
-    )) as { bridge: string; keys: string; mc: string; root: number }
-    const ok = result.bridge === 'object' && result.keys === 'accounts,app,game,logs,settings' && result.mc === PINS.minecraft && result.root > 0
+      `(async () => {
+        const info = await window.wave.app.info()
+        const refused = await window.wave.game.launch().then(() => null, (error) => error.message)
+        return { bridge: typeof window.wave, keys: Object.keys(window.wave).sort().join(','), mc: info.minecraftVersion, memory: info.memoryRangeMb.min, refused, root: document.getElementById('root')?.childElementCount ?? -1 }
+      })()`
+    )) as { bridge: string; keys: string; mc: string; memory: number; refused: string | null; root: number }
+    const ok =
+      result.bridge === 'object' &&
+      result.keys === 'accounts,app,game,logs,settings' &&
+      result.mc === PINS.minecraft &&
+      result.memory === 1024 &&
+      result.refused === 'Sign in with a Microsoft account first.' &&
+      result.root > 0
     log(`SMOKE ${ok ? 'OK' : 'FAILED'} ${JSON.stringify(result)}`)
     app.exit(ok ? 0 : 1)
   } catch (error) {
