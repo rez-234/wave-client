@@ -1,7 +1,8 @@
 /**
  * Electron wraps errors thrown by main-process handlers:
  * "Error invoking remote method 'game:launch': Error: Minecraft is already starting or running."
- * The part after the prefix is the message written for players.
+ * The preload already strips the prefix; this is a second line of defense. The part after it is
+ * the message written for players.
  */
 const IPC_PREFIX = /^Error invoking remote method '[^']*':\s*(?:[A-Za-z]*Error:\s*)?/
 

@@ -61,6 +61,7 @@ export function SettingsView({
   const [saved, flashSaved] = useFlash(1800)
   const latest = useRef(0)
   const disabled = !settingsLoaded
+  const checkJava = useCallback(() => window.wave.settings.javaInfo(), [])
 
   /**
    * Saves a change right away. The main process may adjust values (it clamps them), so what it
@@ -104,11 +105,12 @@ export function SettingsView({
 
         <div className="settings__body">
           <SettingsSection id="game" title="Game">
-            <MemorySetting memoryMb={settings.memoryMb} totalMemoryMb={info.totalMemoryMb} disabled={disabled} onSave={(memoryMb) => save({ memoryMb })} />
+            <MemorySetting memoryMb={settings.memoryMb} totalMemoryMb={info.totalMemoryMb} limits={info.memoryRangeMb} disabled={disabled} onSave={(memoryMb) => save({ memoryMb })} />
             <JavaSetting
               javaPath={settings.javaPath}
               disabled={disabled}
               onPick={() => window.wave.settings.pickJava()}
+              onCheck={checkJava}
               onSave={(javaPath) => save({ javaPath })}
             />
             <JvmArgsSetting jvmArgs={settings.jvmArgs} disabled={disabled} onSave={(jvmArgs) => save({ jvmArgs })} />

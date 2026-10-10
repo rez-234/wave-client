@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 
-import type { CrashSummary } from '@shared/ipc'
+import type { CrashFileKind, CrashSummary } from '@shared/ipc'
 
 import { suspectName } from '../../lib/play'
 import { Button } from '../ui/Button'
@@ -11,8 +11,7 @@ interface CrashCardProps {
   exitCode: number | null | undefined
   onPlayAgain: () => void
   onShowLogs: () => void
-  onOpenCrashReports: () => void
-  onOpenGameFolder: () => void
+  onOpenFile: (kind: CrashFileKind) => void
   onCopyDetails: () => void
   copied: boolean
   playDisabled: boolean
@@ -24,8 +23,7 @@ export function CrashCard({
   exitCode,
   onPlayAgain,
   onShowLogs,
-  onOpenCrashReports,
-  onOpenGameFolder,
+  onOpenFile,
   onCopyDetails,
   copied,
   playDisabled
@@ -62,12 +60,12 @@ export function CrashCard({
           View logs
         </Button>
         {crash?.reportPath ? (
-          <Button variant="secondary" icon="folder" onClick={onOpenCrashReports}>
-            Open crash reports
+          <Button variant="secondary" icon="file" onClick={() => onOpenFile('report')}>
+            Open crash report
           </Button>
         ) : crash?.jvmErrorPath ? (
-          <Button variant="secondary" icon="folder" onClick={onOpenGameFolder}>
-            Open game folder
+          <Button variant="secondary" icon="file" onClick={() => onOpenFile('jvm-error')}>
+            Open error log
           </Button>
         ) : null}
         {crash && (

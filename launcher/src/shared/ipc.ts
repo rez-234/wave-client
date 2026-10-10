@@ -20,6 +20,8 @@ export const IpcChannels = {
   openFolder: 'shell:open-folder',
   openExternal: 'shell:open-external',
   settingsPickJava: 'settings:pick-java',
+  settingsJavaInfo: 'settings:java-info',
+  gameOpenCrashFile: 'game:open-crash-file',
   appInfo: 'app:info',
   /** Main → renderer events. */
   eventSignIn: 'event:sign-in',
@@ -107,6 +109,8 @@ export interface GameState {
   phase: GamePhase
   task?: TaskProgress
   exitCode?: number | null
+  /** On 'exited': the player ended the game from the launcher (Force quit). */
+  closedByLauncher?: boolean
   crash?: CrashSummary
   /** A user-facing message for 'failed'. */
   error?: string
@@ -123,9 +127,21 @@ export interface LogLine {
   logger: string | null
   message: string
   throwable?: string
+  /** Which launch the line belongs to, counted from 1 since the launcher started. Lines from earlier launches are kept. */
+  session?: number
 }
 
 export type FolderKind = 'game' | 'mods' | 'logs' | 'crash-reports' | 'screenshots' | 'launcher'
+
+/** The files a crash summary can point to. */
+export type CrashFileKind = 'report' | 'jvm-error'
+
+/** The Java chosen in Settings, checked again: its version, or why it can't be used. */
+export interface JavaStatus {
+  path: string
+  version: string | null
+  problem: string | null
+}
 
 export interface AppInfo {
   version: string
@@ -134,8 +150,10 @@ export interface AppInfo {
   signInAvailable: boolean
   /** False when the OS has no secure storage (e.g. Linux without a keyring): accounts aren't remembered. */
   secureStorage: boolean
-  /** Installed RAM, for the memory slider (the launcher allows up to 75% of it). */
+  /** Installed RAM. */
   totalMemoryMb: number
+  /** What the main process accepts for LauncherSettings.memoryMb (up to 75% of installed RAM). */
+  memoryRangeMb: { min: number; max: number }
   platform: 'win32' | 'darwin' | 'linux' | (string & {})
 }
 
@@ -161,12 +179,16 @@ export interface WaveApi {
     set(settings: Partial<LauncherSettings>): Promise<LauncherSettings>
     /** Shows a file picker for a Java executable and returns the chosen path (checked), or null. */
     pickJava(): Promise<{ path: string; version: string } | null>
+    /** Checks the saved Java again (it may have been updated or removed); null when the bundled Java is used. */
+    javaInfo(): Promise<JavaStatus | null>
   }
   game: {
     launch(options?: { repair?: boolean }): Promise<void>
     cancel(): Promise<void>
     kill(): Promise<void>
     state(): Promise<GameState>
+    /** Opens the crash report or JVM error log of the last crash in the default text editor. */
+    openCrashFile(kind: CrashFileKind): Promise<void>
     onState(listener: (state: GameState) => void): () => void
   }
   logs: {

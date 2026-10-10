@@ -36,17 +36,13 @@ export function playButtonModel(phase: GamePhase, account: AccountView | null, l
   return { label: 'Play', action: 'play', disabled: false, hint: null }
 }
 
-/**
- * The note under the Play button after a session, or null. The main process reports any other
- * abnormal exit as a crash, so an 'exited' game with a non-zero (or no) exit code was closed from
- * the launcher (Force quit).
- */
+/** The note under the Play button after a session, or null. */
 export function exitNote(state: GameState): { text: string; normal: boolean } | null {
   if (state.phase !== 'exited') {
     return null
   }
 
-  const normal = state.exitCode === 0 || state.exitCode === undefined
+  const normal = state.closedByLauncher !== true
   return { text: normal ? 'Last session ended normally' : 'Minecraft was closed from the launcher', normal }
 }
 

@@ -1,4 +1,4 @@
-import type { AfterLaunch, GameState, LogLevel, LogLine, TaskProgress } from '@shared/ipc'
+import type { AfterLaunch, CrashFileKind, GameState, LogLevel, LogLine, TaskProgress } from '@shared/ipc'
 
 import type { AccountStore } from './accounts/store'
 import { AuthError } from './auth/errors'
@@ -39,8 +39,10 @@ export class GameController {
   private state: GameState = { phase: 'idle' }
   private abort: AbortController | null = null
   private session: GameSession | null = null
+  /** Output of this and earlier launches (the newest MAX_LINES lines), so nothing vanishes on Play again. */
   private lines: LogLine[] = []
   private seq = 0
+  private launches = 0
 
   constructor(private readonly deps: ControllerDeps) {}
 
@@ -50,6 +52,12 @@ export class GameController {
 
   snapshot(): LogLine[] {
     return [...this.lines]
+  }
+
+  /** The crash report or JVM error log of the crash being shown, if there is one. */
+  crashFile(kind: CrashFileKind): string | null {
+    const crash = this.state.phase === 'crashed' ? this.state.crash : undefined
+    return (kind === 'report' ? crash?.reportPath : crash?.jvmErrorPath) ?? null
   }
 
   async launch(options: { repair?: boolean } = {}): Promise<void> {
@@ -65,7 +73,7 @@ export class GameController {
 
     const abort = new AbortController()
     this.abort = abort
-    this.lines = []
+    this.launches++
     this.setState({ phase: 'preparing' })
     const settings = this.deps.settings.get()
     let secrets: string[] = []
@@ -143,11 +151,12 @@ export class GameController {
   private onExit(exit: GameExit, afterLaunch: AfterLaunch): void {
     this.session = null
     const crashed = exit.crash !== null
-    this.setState(crashed ? { phase: 'crashed', exitCode: exit.code, crash: exit.crash! } : { phase: 'exited', exitCode: exit.code })
+    this.setState(crashed ? { phase: 'crashed', exitCode: exit.code, crash: exit.crash! } : { phase: 'exited', exitCode: exit.code, closedByLauncher: exit.killed })
     this.deps.window.afterExit(afterLaunch, crashed)
   }
 
-  private addLines(lines: LogLine[]): void {
+  private addLines(batch: LogLine[]): void {
+    const lines = batch.map((line) => ({ ...line, session: this.launches }))
     this.lines.push(...lines)
 
     if (this.lines.length > MAX_LINES) {
@@ -204,6 +213,27 @@ export function userMessage(error: unknown): string {
   }
 
   return 'Something went wrong while starting Minecraft. The log has the details.'
+}
+
+/** The log as a text file: one line per entry, stack traces under it, a header for each launch. */
+export function logText(lines: readonly LogLine[]): string {
+  const out: string[] = []
+  let session: number | undefined
+
+  for (const line of lines) {
+    if (line.session !== undefined && line.session !== session) {
+      session = line.session
+      out.push(`---- Launch ${session} ----`)
+    }
+
+    out.push(`[${new Date(line.time).toISOString()}] [${line.thread ?? 'output'}/${line.level}] ${line.message}`)
+
+    if (line.throwable) {
+      out.push(line.throwable)
+    }
+  }
+
+  return `${out.join('\n')}\n`
 }
 
 function technical(error: unknown): string {

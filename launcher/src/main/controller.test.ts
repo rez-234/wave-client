@@ -9,7 +9,7 @@ import { DEFAULT_SETTINGS, type GameState, type LogLine } from '@shared/ipc'
 import { AccountStore, type StoredAccount } from './accounts/store'
 import { AuthError } from './auth/errors'
 import type { AuthService } from './auth/service'
-import { GameController, userMessage } from './controller'
+import { GameController, logText, userMessage } from './controller'
 import { prepareGame, type PreparedGame } from './game/install'
 import type { GameSession } from './game/process'
 import { DownloadError, HashMismatchError } from './net/downloads'
@@ -116,6 +116,36 @@ describe('GameController', () => {
     expect(states.at(-1)).toEqual({ phase: 'failed', error: 'Please sign in to Steve again.' })
     expect(lines.at(-1)?.message).toBe('Please sign in to Steve again.')
     expect(JSON.stringify(lines)).not.toContain('secret-access-token-123')
+  })
+
+  it('keeps the log across launches, numbered by launch, and reports a forced quit', async () => {
+    await accounts.upsert(ACCOUNT)
+    vi.mocked(prepareGame).mockResolvedValue(PREPARED)
+    const ctl = controller()
+    await ctl.launch()
+    started[0]!['options'].onExit({ code: 143, signal: null, crash: null, killed: true })
+    expect(states.at(-1)).toEqual({ phase: 'exited', exitCode: 143, closedByLauncher: true })
+
+    await ctl.launch()
+    const snapshot = ctl.snapshot()
+    expect(snapshot[0]?.session).toBe(1)
+    expect(snapshot.at(-1)?.session).toBe(2)
+    expect(lines.map((line) => line.session)).toEqual(snapshot.map((line) => line.session))
+    expect(logText(snapshot)).toMatch(/^---- Launch 1 ----\n[\s\S]*\n---- Launch 2 ----\n/)
+  })
+
+  it('only offers the files of the crash being shown', async () => {
+    await accounts.upsert(ACCOUNT)
+    vi.mocked(prepareGame).mockResolvedValue(PREPARED)
+    const ctl = controller()
+    await ctl.launch()
+    const crash = { reason: 'boom', reportPath: '/g/crash-reports/crash-1.txt', jvmErrorPath: null, suspectedMods: [], lastLines: [] }
+    started[0]!['options'].onExit({ code: -1, signal: null, crash, killed: false })
+
+    expect(ctl.crashFile('report')).toBe('/g/crash-reports/crash-1.txt')
+    expect(ctl.crashFile('jvm-error')).toBeNull()
+    await ctl.launch()
+    expect(ctl.crashFile('report')).toBeNull()
   })
 
   it('goes back to idle when cancelled', async () => {

@@ -29,6 +29,12 @@ const PATHS = {
       <path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10" />
     </>
   ),
+  file: (
+    <>
+      <path d="M6.5 3.5h7l4.5 4.5v11a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 19V5a1.5 1.5 0 0 1 1.5-1.5Z" strokeLinejoin="round" />
+      <path d="M13.5 3.5V8H18M8.5 12.5h7M8.5 16h5" />
+    </>
+  ),
   folder: <path d="M3.5 7a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V7Z" strokeLinejoin="round" />,
   plus: <path d="M12 5v14M5 12h14" />,
   signOut: (

@@ -1,9 +1,10 @@
-import { useCallback, useDeferredValue, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
+import { Fragment, useCallback, useDeferredValue, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
 
 import type { LogLine } from '@shared/ipc'
 
 import { useClipboard } from '../../hooks/useClipboard'
-import { LEVEL_FILTERS, MAX_RENDERED_LINES, filterLogLines, formatLogText, isLevelFilter, visibleWindow, type LevelFilter } from '../../lib/logs'
+import { formatClock } from '../../lib/format'
+import { LEVEL_FILTERS, MAX_RENDERED_LINES, filterLogLines, formatLogText, isLevelFilter, startsLaunch, visibleWindow, type LevelFilter } from '../../lib/logs'
 import { Button } from '../ui/Button'
 import { Icon } from '../ui/Icon'
 import { LogRow } from './LogRow'
@@ -173,8 +174,15 @@ export function LogsView({ lines, onExport, onOpenFolder, report }: LogsViewProp
             </p>
           ) : (
             <ol className="log-lines">
-              {view.lines.map((line) => (
-                <LogRow key={line.seq} line={line} />
+              {view.lines.map((line, i) => (
+                <Fragment key={line.seq}>
+                  {startsLaunch(line, view.lines[i - 1]) && (
+                    <li className="log-launch" role="separator">
+                      Launch {line.session} · {formatClock(line.time)}
+                    </li>
+                  )}
+                  <LogRow line={line} />
+                </Fragment>
               ))}
             </ol>
           )}

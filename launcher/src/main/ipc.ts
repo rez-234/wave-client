@@ -3,13 +3,14 @@ import { join } from 'node:path'
 
 import { BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 
-import { IpcChannels, type AccountView, type AppInfo, type FolderKind, type SignInEvent, type SignInMethod } from '@shared/ipc'
+import { IpcChannels, type AccountView, type AppInfo, type FolderKind, type JavaStatus, type SignInEvent, type SignInMethod } from '@shared/ipc'
 
 import type { AccountStore } from './accounts/store'
 import { AuthError } from './auth/errors'
 import type { AuthService } from './auth/service'
 import { isAllowedExternalUrl } from './config'
-import type { GameController } from './controller'
+import { logText, type GameController } from './controller'
+import { isCrashFile } from './game/crash'
 import { probeJava } from './game/java'
 import { PINS } from './game/pins'
 import { instanceDir, type LauncherPaths } from './paths'
@@ -175,6 +176,21 @@ export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
     return { path, version: java.version }
   })
 
+  handle(IpcChannels.settingsJavaInfo, async (): Promise<JavaStatus | null> => {
+    const path = deps.settings.get().javaPath
+
+    if (!path) {
+      return null
+    }
+
+    try {
+      const java = await probeJava(path)
+      return { path, version: java.version, problem: java.major < 21 ? `This is Java ${java.version}. Minecraft ${PINS.minecraft} needs Java 21 or newer.` : null }
+    } catch {
+      return { path, version: null, problem: "This Java can't be run anymore. Choose another one or use the bundled Java." }
+    }
+  })
+
   handle(IpcChannels.gameLaunch, (options: unknown) => {
     const repair = typeof options === 'object' && options !== null && (options as { repair?: unknown }).repair === true
     // Progress and errors arrive as state events; the call returns once it has finished or failed.
@@ -186,6 +202,25 @@ export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
   handle(IpcChannels.gameState, () => deps.game.getState())
   handle(IpcChannels.logsSnapshot, () => deps.game.snapshot())
 
+  handle(IpcChannels.gameOpenCrashFile, async (kind: unknown) => {
+    if (kind !== 'report' && kind !== 'jvm-error') {
+      throw new Error('Unknown file')
+    }
+
+    // Only the paths of the crash being shown, and only the game's own crash files.
+    const file = deps.game.crashFile(kind)
+
+    if (!file || !isCrashFile(folderPath(deps.paths, 'game'), file)) {
+      throw new Error("That file isn't available.")
+    }
+
+    const problem = await shell.openPath(file)
+
+    if (problem) {
+      throw new Error(problem)
+    }
+  })
+
   handle(IpcChannels.logsExport, async () => {
     const window = deps.window()
     const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)
@@ -196,11 +231,7 @@ export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
       return null
     }
 
-    const text = deps.game
-      .snapshot()
-      .map((line) => `[${new Date(line.time).toISOString()}] [${line.thread ?? 'output'}/${line.level}] ${line.message}${line.throwable ? `\n${line.throwable}` : ''}`)
-      .join('\n')
-    await writeFile(result.filePath, `${text}\n`)
+    await writeFile(result.filePath, logText(deps.game.snapshot()))
     return result.filePath
   })
 

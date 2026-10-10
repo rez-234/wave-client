@@ -146,7 +146,6 @@ export function App(): JSX.Element {
         onKill={() => void window.wave.game.kill().catch(report)}
         onShowLogs={() => setView('logs')}
         onShowSettings={() => setView('settings')}
-        onOpenFolder={openFolder}
         report={report}
       />
     )

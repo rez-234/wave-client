@@ -1,6 +1,6 @@
 import type { AfterLaunch } from '@shared/ipc'
 
-/** The main process never gives the game less than this (see main/settings.ts). */
+/** Used only if the main process didn't say (see AppInfo.memoryRangeMb). */
 export const MIN_MEMORY_MB = 1024
 export const MEMORY_STEP_MB = 256
 
@@ -11,13 +11,14 @@ export interface MemoryRange {
 }
 
 /**
- * The memory slider's range: 1 GB up to 75% of the installed memory (what the main process
- * allows), rounded down to whole steps so the top of the slider can be reached.
+ * The memory slider's range: what the main process accepts, with the top rounded down to whole
+ * steps so the end of the slider can be reached.
  */
-export function memoryRange(totalMemoryMb: number): MemoryRange {
-  const allowed = Number.isFinite(totalMemoryMb) ? Math.floor(totalMemoryMb * 0.75) : MIN_MEMORY_MB
-  const steps = Math.max(0, Math.floor((allowed - MIN_MEMORY_MB) / MEMORY_STEP_MB))
-  return { min: MIN_MEMORY_MB, max: MIN_MEMORY_MB + steps * MEMORY_STEP_MB, step: MEMORY_STEP_MB }
+export function memoryRange(limits: { min: number; max: number } | undefined): MemoryRange {
+  const min = limits && Number.isFinite(limits.min) ? limits.min : MIN_MEMORY_MB
+  const max = limits && Number.isFinite(limits.max) ? limits.max : min
+  const steps = Math.max(0, Math.floor((max - min) / MEMORY_STEP_MB))
+  return { min, max: min + steps * MEMORY_STEP_MB, step: MEMORY_STEP_MB }
 }
 
 /** A value on the slider's grid, inside its range. */

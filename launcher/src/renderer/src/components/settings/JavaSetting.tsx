@@ -1,4 +1,6 @@
-import { useState, type JSX } from 'react'
+import { useEffect, useState, type JSX } from 'react'
+
+import type { JavaStatus } from '@shared/ipc'
 
 import { errorMessage } from '../../lib/errors'
 import { Button } from '../ui/Button'
@@ -9,14 +11,33 @@ interface JavaSettingProps {
   disabled: boolean
   onPick: () => Promise<{ path: string; version: string } | null>
   onSave: (javaPath: string | null) => Promise<unknown>
+  /** Checks the saved Java again. */
+  onCheck: () => Promise<JavaStatus | null>
 }
 
 /** The bundled Java (recommended), or a Java executable the player picks. */
-export function JavaSetting({ javaPath, disabled, onPick, onSave }: JavaSettingProps): JSX.Element {
+export function JavaSetting({ javaPath, disabled, onPick, onSave, onCheck }: JavaSettingProps): JSX.Element {
   const [picked, setPicked] = useState<{ path: string; version: string } | null>(null)
+  const [status, setStatus] = useState<JavaStatus | null>(null)
   const [picking, setPicking] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const version = picked && picked.path === javaPath ? picked.version : null
+  const checked = status && status.path === javaPath ? status : null
+  const version = checked?.version ?? (picked && picked.path === javaPath ? picked.version : null)
+
+  // The saved Java may have been updated or removed since it was chosen.
+  useEffect(() => {
+    if (javaPath === null) {
+      return
+    }
+
+    let active = true
+    onCheck()
+      .then((result) => active && setStatus(result))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [javaPath, onCheck])
 
   const browse = (): void => {
     setPicking(true)
@@ -48,9 +69,9 @@ export function JavaSetting({ javaPath, disabled, onPick, onSave }: JavaSettingP
               </p>
             </>
           )}
-          {error && (
+          {(error ?? checked?.problem) && (
             <p className="field-error" role="alert">
-              {error}
+              {error ?? checked?.problem}
             </p>
           )}
         </>

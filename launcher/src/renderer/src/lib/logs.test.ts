@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { LogLevel, LogLine } from '@shared/ipc'
 
-import { filterLogLines, formatLogLine, formatLogText, isLevelFilter, levelTone, matchesLogFilter, mergeLogLines, visibleWindow } from './logs'
+import { filterLogLines, formatLogLine, formatLogText, isLevelFilter, levelTone, matchesLogFilter, mergeLogLines, startsLaunch, visibleWindow } from './logs'
 
 const line = (seq: number, patch: Partial<LogLine> = {}): LogLine => ({
   seq,
@@ -109,6 +109,15 @@ describe('formatting', () => {
       '[12:00:00] [ERROR] Boom\njava.lang.Error\n\tat x'
     )
     expect(formatLogText([line(1), line(2)]).split('\n')).toHaveLength(2)
+  })
+
+  it('marks where a new launch starts', () => {
+    const text = formatLogText([line(1, { session: 1 }), line(2, { session: 2 }), line(3, { session: 2 })]).split('\n')
+    expect(text).toHaveLength(4)
+    expect(text[1]).toBe('---- Launch 2 ----')
+    expect(startsLaunch(line(2, { session: 2 }), line(1, { session: 1 }))).toBe(true)
+    expect(startsLaunch(line(2, { session: 2 }), undefined)).toBe(false)
+    expect(startsLaunch(line(2), line(1))).toBe(false)
   })
 
   it('maps levels to colors', () => {

@@ -1740,6 +1740,27 @@ pre,
   padding: 1px var(--space-3);
 }
 
+.log-launch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) var(--space-3);
+  color: var(--color-text-muted);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.log-launch::before,
+.log-launch::after {
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+  content: '';
+}
+
 .log-line:hover {
   background: var(--color-surface);
 }

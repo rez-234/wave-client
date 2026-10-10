@@ -11,7 +11,13 @@ function on<T>(channel: string, listener: (payload: T) => void): () => void {
   }
 }
 
-const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> => ipcRenderer.invoke(channel, ...args) as Promise<T>
+/** Electron prefixes errors from main-process handlers; the UI gets only the message written for players. */
+const REMOTE_ERROR = /^Error invoking remote method '[^']*':\s*(?:[A-Za-z]*Error:\s*)?/
+
+const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> =>
+  (ipcRenderer.invoke(channel, ...args) as Promise<T>).catch((error: unknown) => {
+    throw new Error(error instanceof Error ? error.message.replace(REMOTE_ERROR, '') : 'Something went wrong.')
+  })
 
 /** The only bridge to the main process: typed calls, no raw ipcRenderer, no Node APIs. */
 const api: WaveApi = {
@@ -32,13 +38,15 @@ const api: WaveApi = {
   settings: {
     get: () => invoke(IpcChannels.settingsGet),
     set: (settings) => invoke(IpcChannels.settingsSet, settings),
-    pickJava: () => invoke(IpcChannels.settingsPickJava)
+    pickJava: () => invoke(IpcChannels.settingsPickJava),
+    javaInfo: () => invoke(IpcChannels.settingsJavaInfo)
   },
   game: {
     launch: (options) => invoke(IpcChannels.gameLaunch, options ?? {}),
     cancel: () => invoke(IpcChannels.gameCancel),
     kill: () => invoke(IpcChannels.gameKill),
     state: () => invoke(IpcChannels.gameState),
+    openCrashFile: (kind) => invoke(IpcChannels.gameOpenCrashFile, kind),
     onState: (listener) => on(IpcChannels.eventGame, listener)
   },
   logs: {

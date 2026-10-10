@@ -7,6 +7,7 @@ import { SettingRow } from './SettingRow'
 interface MemorySettingProps {
   memoryMb: number
   totalMemoryMb: number
+  limits: { min: number; max: number } | undefined
   disabled: boolean
   onSave: (memoryMb: number) => Promise<unknown>
 }
@@ -14,8 +15,8 @@ interface MemorySettingProps {
 /** Waits this long after the slider stops moving before saving, so dragging doesn't write the file on every step. */
 const SAVE_DELAY_MS = 300
 
-export function MemorySetting({ memoryMb, totalMemoryMb, disabled, onSave }: MemorySettingProps): JSX.Element {
-  const range = memoryRange(totalMemoryMb)
+export function MemorySetting({ memoryMb, totalMemoryMb, limits, disabled, onSave }: MemorySettingProps): JSX.Element {
+  const range = memoryRange(limits)
   const [draft, setDraft] = useState<number | null>(null)
   const timer = useRef<number | null>(null)
   const value = draft ?? memoryMb

@@ -87,7 +87,7 @@ export function phaseAnnouncement(state: GameState, launching: boolean): string 
     case 'running':
       return 'Minecraft is running'
     case 'exited':
-      return state.exitCode === 0 || state.exitCode === undefined
+      return state.closedByLauncher !== true
         ? 'Minecraft closed. The last session ended normally.'
         : 'Minecraft was closed from the launcher.'
     case 'idle':

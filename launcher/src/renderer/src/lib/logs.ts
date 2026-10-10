@@ -146,6 +146,11 @@ export function formatLogLine(line: LogLine): string {
   return `${head} ${line.message}${line.throwable ? `\n${line.throwable}` : ''}`
 }
 
+/** Whether a line belongs to a later launch than the line shown before it, so a divider goes above it. */
+export function startsLaunch(line: LogLine, previous: LogLine | undefined): boolean {
+  return previous !== undefined && line.session !== undefined && line.session !== previous.session
+}
+
 export function formatLogText(lines: readonly LogLine[]): string {
-  return lines.map(formatLogLine).join('\n')
+  return lines.flatMap((line, i) => (startsLaunch(line, lines[i - 1]) ? [`---- Launch ${line.session} ----`, formatLogLine(line)] : [formatLogLine(line)])).join('\n')
 }

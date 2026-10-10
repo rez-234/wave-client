@@ -71,7 +71,7 @@ describe('phaseAnnouncement', () => {
     expect(phaseAnnouncement({ phase: 'idle' }, true)).toBe('Getting ready…')
     expect(phaseAnnouncement({ phase: 'idle' }, false)).toBe('')
     expect(phaseAnnouncement({ phase: 'exited', exitCode: 0 }, false)).toBe('Minecraft closed. The last session ended normally.')
-    expect(phaseAnnouncement({ phase: 'exited', exitCode: 143 }, false)).toBe('Minecraft was closed from the launcher.')
+    expect(phaseAnnouncement({ phase: 'exited', exitCode: 143, closedByLauncher: true }, false)).toBe('Minecraft was closed from the launcher.')
   })
 
   it('leaves crashes and failures to their alerts', () => {

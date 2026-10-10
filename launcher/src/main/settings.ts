@@ -7,13 +7,18 @@ const AFTER_LAUNCH: AfterLaunch[] = ['keep-open', 'minimize', 'close']
 export const MIN_MEMORY_MB = 1024
 export const MAX_JVM_ARGS_LENGTH = 2000
 
+/** The memory the game may be given: at least 1 GiB, at most 75% of the installed RAM. */
+export function memoryRangeMb(totalMemoryMb: number): { min: number; max: number } {
+  return { min: MIN_MEMORY_MB, max: Math.max(MIN_MEMORY_MB, Math.floor(totalMemoryMb * 0.75)) }
+}
+
 /**
  * Cleans settings from disk or from the UI: unknown keys dropped, numbers clamped, wrong types
  * replaced by defaults. Never throws.
  */
 export function sanitizeSettings(input: unknown, totalMemoryMb: number, base: LauncherSettings = DEFAULT_SETTINGS): LauncherSettings {
   const value = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>
-  const maxMemory = Math.max(MIN_MEMORY_MB, Math.floor(totalMemoryMb * 0.75))
+  const maxMemory = memoryRangeMb(totalMemoryMb).max
 
   return {
     memoryMb: clampInt(value.memoryMb, MIN_MEMORY_MB, maxMemory, Math.min(base.memoryMb, maxMemory)),

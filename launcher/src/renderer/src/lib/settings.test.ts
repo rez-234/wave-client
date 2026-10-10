@@ -3,23 +3,24 @@ import { describe, expect, it } from 'vitest'
 import { memoryRange, parseDimension, snapMemory } from './settings'
 
 describe('memoryRange', () => {
-  it('goes from 1 GB to 75% of the installed memory in 256 MB steps', () => {
-    expect(memoryRange(16384)).toEqual({ min: 1024, max: 12288, step: 256 })
+  it("uses the main process's limits in 256 MB steps", () => {
+    expect(memoryRange({ min: 1024, max: 12288 })).toEqual({ min: 1024, max: 12288, step: 256 })
   })
 
   it('rounds the top down to a whole step', () => {
-    // 75% of 16000 is 12000, which isn't on the grid.
-    expect(memoryRange(16000).max).toBe(11776)
+    // 75% of 16000 MB is 12000, which isn't on the grid.
+    expect(memoryRange({ min: 1024, max: 12000 }).max).toBe(11776)
   })
 
   it('never goes below the minimum', () => {
-    expect(memoryRange(1000)).toEqual({ min: 1024, max: 1024, step: 256 })
-    expect(memoryRange(Number.NaN).max).toBe(1024)
+    expect(memoryRange({ min: 1024, max: 1024 })).toEqual({ min: 1024, max: 1024, step: 256 })
+    expect(memoryRange({ min: 1024, max: Number.NaN }).max).toBe(1024)
+    expect(memoryRange(undefined)).toEqual({ min: 1024, max: 1024, step: 256 })
   })
 })
 
 describe('snapMemory', () => {
-  const range = memoryRange(16384)
+  const range = memoryRange({ min: 1024, max: 12288 })
 
   it('snaps to the grid and clamps', () => {
     expect(snapMemory(4096, range)).toBe(4096)

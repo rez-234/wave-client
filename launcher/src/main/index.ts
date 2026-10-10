@@ -18,7 +18,7 @@ import { registerIpc } from './ipc'
 import { DownloadQueue } from './net/downloads'
 import { HttpClient } from './net/http'
 import { launcherPaths } from './paths'
-import { SettingsStore } from './settings'
+import { SettingsStore, memoryRangeMb } from './settings'
 
 const root = process.env.WAVE_LAUNCHER_HOME ? resolve(process.env.WAVE_LAUNCHER_HOME) : join(app.getPath('appData'), 'WaveClient')
 const paths = launcherPaths(root)
@@ -77,7 +77,8 @@ async function start(): Promise<void> {
   const queue = new DownloadQueue({ http, concurrency: 8 })
   const accounts = new AccountStore(paths.accountsFile, electronSecretBox, log)
   await accounts.load()
-  const settings = new SettingsStore(paths.settingsFile, Math.floor(totalmem() / (1024 * 1024)))
+  const totalMemoryMb = Math.floor(totalmem() / (1024 * 1024))
+  const settings = new SettingsStore(paths.settingsFile, totalMemoryMb)
   await settings.load()
   const clientId = msaClientId(process.env.WAVE_MSA_CLIENT_ID, import.meta.env.MAIN_VITE_MSA_CLIENT_ID)
   const auth = new AuthService({
@@ -93,7 +94,8 @@ async function start(): Promise<void> {
     minecraftVersion: PINS.minecraft,
     signInAvailable: auth.available,
     secureStorage: accounts.persistent,
-    totalMemoryMb: Math.floor(totalmem() / (1024 * 1024)),
+    totalMemoryMb,
+    memoryRangeMb: memoryRangeMb(totalMemoryMb),
     platform: process.platform
   }
 

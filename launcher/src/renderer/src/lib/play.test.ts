@@ -71,8 +71,8 @@ describe('exitNote', () => {
   })
 
   it('says a forced quit was a forced quit', () => {
-    expect(exitNote({ phase: 'exited', exitCode: 143 })).toEqual({ text: 'Minecraft was closed from the launcher', normal: false })
-    expect(exitNote({ phase: 'exited', exitCode: null })).toEqual({ text: 'Minecraft was closed from the launcher', normal: false })
+    expect(exitNote({ phase: 'exited', exitCode: 143, closedByLauncher: true })).toEqual({ text: 'Minecraft was closed from the launcher', normal: false })
+    expect(exitNote({ phase: 'exited', exitCode: null, closedByLauncher: true })).toEqual({ text: 'Minecraft was closed from the launcher', normal: false })
   })
 
   it('is empty outside the exited phase', () => {

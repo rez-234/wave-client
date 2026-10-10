@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 
-import type { AccountView, AppInfo, FolderKind, GameState, LauncherSettings } from '@shared/ipc'
+import type { AccountView, AppInfo, GameState, LauncherSettings } from '@shared/ipc'
 
 import { useClipboard } from '../../hooks/useClipboard'
 import { formatMemory } from '../../lib/format'
@@ -28,7 +28,6 @@ interface PlayViewProps {
   onKill: () => void
   onShowLogs: () => void
   onShowSettings: () => void
-  onOpenFolder: (kind: FolderKind) => void
   report: (error: unknown) => void
 }
 
@@ -46,7 +45,6 @@ export function PlayView(props: PlayViewProps): JSX.Element {
     onKill,
     onShowLogs,
     onShowSettings,
-    onOpenFolder,
     report
   } = props
   const [copied, copy] = useClipboard(report)
@@ -124,8 +122,7 @@ export function PlayView(props: PlayViewProps): JSX.Element {
           playDisabled={button.disabled || button.action !== 'play'}
           onPlayAgain={() => onLaunch()}
           onShowLogs={onShowLogs}
-          onOpenCrashReports={() => onOpenFolder('crash-reports')}
-          onOpenGameFolder={() => onOpenFolder('game')}
+          onOpenFile={(kind) => void window.wave.game.openCrashFile(kind).catch(report)}
           onCopyDetails={() => game.crash && copy(crashDetailsText(game.crash, info.minecraftVersion, info.version))}
           copied={copied}
         />

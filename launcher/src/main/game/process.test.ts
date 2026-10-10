@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { LogLine } from '@shared/ipc'
 
-import { analyzeExit, describeReport, suspectMods } from './crash'
+import { analyzeExit, describeReport, isCrashFile, suspectMods } from './crash'
 import { GameSession, gameEnvironment, type GameExit } from './process'
 
 const TOKEN = 'eyJ.secret-token-value'
@@ -150,6 +150,29 @@ describe('crash analysis', () => {
     await writeFile(old, 'Description: old crash\n\nboom')
     await utimes(old, new Date(1_000), new Date(1_000))
     expect(await analyzeExit({ gameDir: dir, startedAt: Date.now(), exitCode: 0, signal: null, lines: [] })).toBeNull()
+  })
+
+  it("only trusts a reported crash report path inside the game's crash-reports folder", async () => {
+    await mkdir(join(dir, 'crash-reports'))
+    const real = join(dir, 'crash-reports', 'crash-new-client.txt')
+    await writeFile(real, 'Description: real crash\n\nboom')
+    const outside = join(dir, 'secret.txt')
+    await writeFile(outside, 'Description: not a crash report\n\nx')
+    const lines = [line(`#@!@# Game crashed! Crash report saved to: #@!@# ${outside}`)]
+    const crash = await analyzeExit({ gameDir: dir, startedAt: 0, exitCode: -1, signal: null, lines })
+    expect(crash?.reportPath).toBe(real)
+
+    const relative = await analyzeExit({ gameDir: dir, startedAt: 0, exitCode: -1, signal: null, lines: [line('#@!@# Game crashed! Crash report saved to: #@!@# crash-reports/crash-new-client.txt')] })
+    expect(relative?.reportPath).toBe(real)
+  })
+
+  it('recognizes the files a crash leaves behind', () => {
+    expect(isCrashFile(dir, join(dir, 'crash-reports', 'crash-2026-10-04_14.00.00-client.txt'))).toBe(true)
+    expect(isCrashFile(dir, join(dir, 'hs_err_pid4242.log'))).toBe(true)
+    expect(isCrashFile(dir, join(dir, 'crash-reports', '..', '..', 'crash-x.txt'))).toBe(false)
+    expect(isCrashFile(dir, join(dir, 'crash-reports', 'crash-x.exe'))).toBe(false)
+    expect(isCrashFile(dir, join(dir, 'mods', 'hs_err_pid1.log'))).toBe(false)
+    expect(isCrashFile(dir, '/etc/passwd')).toBe(false)
   })
 
   it('names common problems from the output and the exit code', async () => {

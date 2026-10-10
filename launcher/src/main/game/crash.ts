@@ -1,5 +1,5 @@
 import { readFile, readdir, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 
 import type { CrashSummary, LogLine, SuspectedMod } from '@shared/ipc'
 
@@ -18,6 +18,16 @@ const LAST_LINES = 500
 const CRASH_SAVED = /#@!@# Game crashed! Crash report saved to: #@!@# (.+)$/
 /** Our own mod and Fabric's are never "suspects" just for appearing in a stack trace. */
 const NEVER_SUSPECT = new Set(['minecraft', 'java', 'fabricloader', 'fabric-api', 'mixinextras'])
+
+/**
+ * Whether a file is one the game writes when it crashes: crash-reports/crash-*.txt or
+ * hs_err_pid*.log in the game folder. Paths from the game's output are checked with this before
+ * the launcher reads or opens them.
+ */
+export function isCrashFile(gameDir: string, file: string): boolean {
+  const rel = relative(resolve(gameDir), resolve(gameDir, file))
+  return /^crash-reports[\\/]crash-[^\\/]*\.txt$/.test(rel) || /^hs_err_pid\d+\.log$/.test(rel)
+}
 
 /**
  * Decides whether the game crashed and, if so, why: the crash report the game wrote (newest one
@@ -59,8 +69,8 @@ async function findCrashReport(info: ExitInfo): Promise<string | null> {
   for (let i = info.lines.length - 1; i >= 0; i--) {
     const match = CRASH_SAVED.exec(info.lines[i]!.message)
 
-    if (match) {
-      return match[1]!.trim()
+    if (match && isCrashFile(info.gameDir, match[1]!.trim())) {
+      return resolve(info.gameDir, match[1]!.trim())
     }
   }
 
