@@ -10,7 +10,7 @@ import { installAssets } from './assets'
 import { prepareClientMods } from './client-mods'
 import { fillMissingHashes, loadFabricProfile } from './fabric'
 import { installJavaRuntime, probeJava, windowlessJava } from './java'
-import { PINS } from './pins'
+import { DEFAULT_GAME_VERSION, type GameVersionSpec } from './versions'
 import { mergeVersions, mojangOsName, resolveLibraries, type RuleEnvironment, type VersionJson } from './version'
 
 export const VERSION_MANIFEST = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json'
@@ -37,7 +37,10 @@ export interface PrepareOptions {
   javaPath?: string | null
   /** Our mod jar, shipped with the launcher. */
   bundledModJar: string
+  /** The profile's game folder name under instances/. */
   profileId?: string
+  /** The game version to install; the default one if left out. */
+  gameVersion?: GameVersionSpec
 }
 
 /** Everything about an installed game except who plays it and the user's settings. */
@@ -61,24 +64,25 @@ export interface PreparedGame {
  */
 export async function prepareGame(context: GameContext, options: PrepareOptions): Promise<PreparedGame> {
   const { http, queue, paths } = context
+  const spec = options.gameVersion ?? DEFAULT_GAME_VERSION
   const signal = options.signal
   const verify = options.repair ? 'hash' : 'size'
   const env: RuleEnvironment = { os: mojangOsName(context.platform), arch: context.arch, osVersion: context.osVersion, features: {} }
 
   if (context.platform === 'linux' && context.arch !== 'x64') {
     // Mojang ships neither a Java runtime nor LWJGL natives for Linux on ARM (or 32-bit).
-    throw new Error(`Minecraft ${PINS.minecraft} doesn't support Linux on ${context.arch}.`)
+    throw new Error(`Minecraft ${spec.minecraft} doesn't support Linux on ${context.arch}.`)
   }
   const task = (label: string) => (progress: Omit<TaskProgress, 'label'>) => options.onTask?.({ label, ...progress })
   const announce = (label: string) => options.onTask?.({ label, doneFiles: 0, totalFiles: 0, doneBytes: 0, totalBytes: 0 })
 
   announce('Checking for updates')
-  const vanilla = await loadVanillaVersion(context, PINS.minecraft, signal)
-  const fabric = await loadFabricProfile(http, paths, PINS.minecraft, PINS.fabricLoader, signal)
+  const vanilla = await loadVanillaVersion(context, spec.minecraft, signal)
+  const fabric = await loadFabricProfile(http, paths, spec.minecraft, spec.fabricLoader, signal)
   const version = mergeVersions(fabric, vanilla)
 
   if (!version.downloads?.client || !version.assetIndex) {
-    throw new Error(`Minecraft ${PINS.minecraft} metadata is missing the client or assets`)
+    throw new Error(`Minecraft ${spec.minecraft} metadata is missing the client or assets`)
   }
 
   // Java first: it's needed to launch and is the largest single download.
@@ -87,10 +91,10 @@ export async function prepareGame(context: GameContext, options: PrepareOptions)
   if (options.javaPath) {
     announce('Checking Java')
     const info = await probeJava(options.javaPath)
-    const required = version.javaVersion?.majorVersion ?? 21
+    const required = version.javaVersion?.majorVersion ?? spec.java
 
     if (info.major < required) {
-      throw new Error(`Minecraft ${PINS.minecraft} needs Java ${required}, but the Java chosen in Settings is ${info.version}.`)
+      throw new Error(`Minecraft ${spec.minecraft} needs Java ${required}, but the Java chosen in Settings is ${info.version}.`)
     }
 
     java = await windowlessJava(options.javaPath, context.platform)
@@ -106,7 +110,7 @@ export async function prepareGame(context: GameContext, options: PrepareOptions)
 
   announce('Checking game files')
   const libraries = await fillMissingHashes(http, paths.libraries, resolveLibraries(version.libraries ?? [], env), signal)
-  const clientJar = versionFiles(paths, PINS.minecraft).jar
+  const clientJar = versionFiles(paths, spec.minecraft).jar
   const logConfig = version.logging?.client?.file
   const logConfigPath = logConfig ? inside(join(paths.assets, 'log_configs'), logConfig.id) : null
   const files: DownloadItem[] = [
@@ -125,7 +129,7 @@ export async function prepareGame(context: GameContext, options: PrepareOptions)
   const assets = await installAssets(queue, paths.assets, version.assetIndex, gameDir, { signal, verify, onProgress: task('Downloading assets') })
 
   announce('Preparing mods')
-  const clientMods = await prepareClientMods(http, queue, paths.client, paths.libraries, PINS.fabricApi, options.bundledModJar, { signal, verify })
+  const clientMods = await prepareClientMods(http, queue, paths.client, paths.libraries, spec.fabricApi, options.bundledModJar, { signal, verify })
 
   const nativesDir = join(versionFiles(paths, version.id).dir, 'natives')
   await mkdir(nativesDir, { recursive: true })

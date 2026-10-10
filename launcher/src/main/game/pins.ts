@@ -1,9 +1,11 @@
+import { DEFAULT_GAME_VERSION } from './versions'
+
 /**
- * The exact game, loader and Fabric API versions this launcher installs: the ones the mod is
- * built and tested against (mod/gradle.properties; pins.test.ts fails if they drift).
+ * The default game, loader and Fabric API versions: the ones the mod is built and tested against
+ * (mod/gradle.properties; pins.test.ts fails if they drift).
  */
 export const PINS = {
-  minecraft: '1.21.11',
-  fabricLoader: '0.19.5',
-  fabricApi: '0.141.6+1.21.11'
+  minecraft: DEFAULT_GAME_VERSION.minecraft,
+  fabricLoader: DEFAULT_GAME_VERSION.fabricLoader,
+  fabricApi: DEFAULT_GAME_VERSION.fabricApi
 } as const
