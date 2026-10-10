@@ -49,6 +49,21 @@ describe('install and launch', () => {
     await prepareGame({ http, queue, paths, platform: process.platform, arch: process.arch, osVersion: release() }, { bundledModJar: resolve(modJar!) })
     console.log(`Re-check took ${Date.now() - recheck} ms`)
 
+    // And with no network at all (how Electron's net.fetch fails offline), from what was saved.
+    const offline = new HttpClient({
+      fetch: async () => {
+        throw new Error('net::ERR_INTERNET_DISCONNECTED')
+      },
+      userAgent: 'offline',
+      backoffMs: () => 0
+    })
+    const offlineGame = await prepareGame(
+      { http: offline, queue: new DownloadQueue({ http: offline, retries: 0 }), paths, platform: process.platform, arch: process.arch, osVersion: release() },
+      { bundledModJar: resolve(modJar!) }
+    )
+    expect(offlineGame.classpath).toEqual(game.classpath)
+    expect(offlineGame.java).toBe(game.java)
+
     const command = buildLaunchCommand({
       ...game,
       account: { name: 'WaveCI', uuid: randomBytes(16).toString('hex'), accessToken: `offline-${randomBytes(8).toString('hex')}`, xuid: '' },
