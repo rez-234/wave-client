@@ -214,20 +214,24 @@ typed `window.wave` API (`src/shared/ipc.ts`).
 
 | Module | Responsibility |
 |---|---|
-| `net/http` | fetch wrapper (Electron `net.fetch`, so the system proxy applies): timeouts, cancellation, `Retry-After`-aware retries for idempotent requests; errors never echo request bodies or query strings |
-| `net/downloads` | Parallel queue: `.part` file, size + SHA-1 check, atomic rename, per-file retries, skip valid files, re-hash everything in repair mode |
+| `net/http` | fetch wrapper (Electron `net.fetch`, so the system proxy applies): a deadline for the answer (and for small JSON bodies), cancellation, `Retry-After`-aware retries for idempotent requests; every transport failure becomes one `NetworkError` (Electron reports them as plain `net::ERR_*` errors); errors never echo request bodies or query strings |
+| `net/downloads` | Parallel queue: `.part` file, size + SHA-1 check, atomic rename, per-file retries, skip valid files, re-hash everything in repair mode; no limit on a whole file, but one that receives nothing for 30 s is dropped; a full or read-only disk isn't retried; a cancel returns only once every worker has stopped |
 | `auth/microsoft` | Microsoft identity platform v2 (`consumers`): auth code + PKCE S256 in the system browser with a loopback redirect (listen on 127.0.0.1, redirect `http://localhost:<port>`, state and Host checked); device code fallback; rotated refresh tokens |
 | `auth/xbox-minecraft` | Xbox Live user token (`d=` ticket) → XSTS for `rp://api.minecraftservices.com/` (XErr codes mapped to messages) → `login_with_xbox` ("Invalid app registration" recognised, never retried) → profile (404 explained via entitlements) |
 | `auth/service` | Sign-in chain; refresh before launch when < 12 h of the 24 h token remain, one refresh per account at a time, rotated refresh token saved first, `invalid_grant` or a changed app id → "sign in again", still-valid token used during an outage |
-| `accounts/store` | `accounts.dat` encrypted with `safeStorage`; not written at all when only Linux's insecure `basic_text` backend exists (session-only accounts) |
+| `accounts/store` | `accounts.dat` encrypted with `safeStorage`; not written at all when only Linux's insecure `basic_text` backend exists (session-only accounts); saves queued one at a time; a file that can't be decrypted is set aside, never overwritten; every change is pushed to the window |
 | `game/version` | Version JSON rules (last match wins, `x86` = 32-bit JVM, features), `inheritsFrom` merge (scalars from the child, arguments parent then child, libraries child first and de-duplicated by group:artifact:classifier, as Fabric's Knot refuses duplicate ASM), argument templating |
-| `game/java` | Mojang's Java runtime index and per-component manifests (verified), files, executable bits, links kept inside the runtime; clear error where Mojang ships none (32-bit, Linux on ARM); probes a user-chosen Java |
-| `game/fabric`, `game/client-mods` | Fabric meta profile (cached for offline use; Maven `.sha1` fetched for the loader and intermediary, which the profile leaves unhashed); `client/` holds exactly our mod and the pinned Fabric API for `-Dfabric.addMods` |
+| `game/java` | Mojang's Java runtime index and per-component manifests (verified), files, executable bits, links kept inside the runtime; every file re-hashed when Mojang updates the runtime (an updated file can keep its size); the manifest saved with the runtime for offline checks; clear error where Mojang ships none (32-bit, Linux on ARM); probes a user-chosen Java and runs a chosen `java.exe` as the `javaw.exe` beside it |
+| `game/fabric`, `game/client-mods` | Fabric meta profile (cached for offline use); Maven `.sha1` fetched for the loader, intermediary and Fabric API (which the profile leaves unhashed) and saved next to the jars; `client/` holds exactly our mod and the pinned Fabric API for `-Dfabric.addMods` |
 | `game/assets` | Asset index (always re-hashed: Mojang changed index 29 without changing its id) and objects |
 | `game/install` | The whole install in order, with progress per phase |
 | `game/launch-command` | JVM args from the version (with `-cp`), log4j config, `-Xms/-Xmx`, `-Dfabric.addMods`, user JVM args last (HotSpot keeps the last copy of a flag), main class, game args; every placeholder must be filled; `--xuid` from the token's claim, `--clientId` a per-install id |
-| `game/process`, `game/log-parser`, `game/crash` | Spawn without a shell, parse log4j XML events from stdout (plus plain lines), redact the token, keep 5000 lines; on exit find the crash report, `hs_err` log, Fabric resolution errors and suspect mods |
-| `controller`, `ipc`, `index` | One game at a time; IPC calls accepted only from the app's own window and page; window hardening |
+| `game/process`, `game/log-parser`, `game/crash` | Spawn without a shell, parse log4j XML events from stdout (plus plain lines), redact the token; on exit find the crash report (only inside the game's `crash-reports/`), `hs_err` log, Fabric resolution errors and suspect mods; a forced quit from the launcher is not a crash |
+| `controller`, `ipc`, `index` | One game at a time; the last 5000 lines of output across launches, each numbered by launch; IPC calls accepted only from the app's own window and page; the crash card opens only the shown crash's own files; window hardening |
+
+An installed game starts without the network: every file was hash-checked when installed, and
+the metadata and hashes it was checked against are saved. A Minecraft token that is still valid
+is used when refreshing it fails for lack of a connection.
 
 Pinned versions (`game/pins.ts`, checked against `mod/gradle.properties` by a test): Minecraft
 1.21.11, Fabric Loader 0.19.5, Fabric API 0.141.6+1.21.11.
