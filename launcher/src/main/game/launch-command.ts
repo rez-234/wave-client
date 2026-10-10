@@ -37,7 +37,12 @@ export interface LaunchInput {
   /** Paths (files or folders) given to Fabric as -Dfabric.addMods. */
   addMods: string[]
   account: LaunchAccount
+  /** Window size and fullscreen (launcher settings). */
   settings: LauncherSettings
+  /** Maximum heap, from the profile. */
+  memoryMb: number
+  /** The profile's extra JVM arguments. */
+  jvmArgs: string
   launcherName: string
   launcherVersion: string
   clientId: string
@@ -104,7 +109,7 @@ export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
     jvm.push(substitute(version.logging.client.argument, { path: input.logConfigPath }))
   }
 
-  jvm.push(`-Xms${Math.min(settings.memoryMb, 1024)}M`, `-Xmx${settings.memoryMb}M`)
+  jvm.push(`-Xms${Math.min(input.memoryMb, 1024)}M`, `-Xmx${input.memoryMb}M`)
   // Output printed straight to stdout/stderr (not through log4j) is read as UTF-8; on Windows Java
   // would otherwise write it in the ANSI code page, mangling non-ASCII paths and messages.
   jvm.push('-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8')
@@ -113,7 +118,7 @@ export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
     jvm.push(`-Dfabric.addMods=${input.addMods.join(separator)}`)
   }
 
-  jvm.push(...splitJvmArgs(settings.jvmArgs))
+  jvm.push(...splitJvmArgs(input.jvmArgs))
 
   const game = expandArguments(gameArgumentTemplates(version), gameEnv, values)
 

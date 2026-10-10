@@ -67,7 +67,9 @@ describe('install and launch', () => {
     const command = buildLaunchCommand({
       ...game,
       account: { name: 'WaveCI', uuid: randomBytes(16).toString('hex'), accessToken: `offline-${randomBytes(8).toString('hex')}`, xuid: '' },
-      settings: { ...DEFAULT_SETTINGS, memoryMb: 2048 },
+      settings: DEFAULT_SETTINGS,
+      memoryMb: 2048,
+      jvmArgs: '',
       launcherName: 'wave-client',
       launcherVersion: 'e2e',
       clientId: Buffer.from('e2e').toString('base64')

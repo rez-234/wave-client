@@ -14,6 +14,8 @@ export interface StoredProfile {
   jvmArgs: string
   createdAt: number
   lastPlayedAt: number | null
+  /** The mod problems the player chose to play with anyway (a hash); they stop no further launches. */
+  playAnyway: string | null
 }
 
 interface ProfilesFile {
@@ -26,6 +28,8 @@ export const PROFILE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
 export const MAX_PROFILE_NAME = 40
 export const DEFAULT_MEMORY_MB = 4096
 export const DEFAULT_PROFILE_ID = 'default'
+/** Names Windows reserves for devices: a folder called "con" can't be created there. */
+const RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)$/
 
 /** Settings an older launcher kept in launcher.json, which now belong to the first profile. */
 export interface LegacySettings {
@@ -33,9 +37,15 @@ export interface LegacySettings {
   jvmArgs?: unknown
 }
 
-/** A folder-safe id for a new profile: its name in lowercase letters, digits and dashes. */
-export function profileIdFor(name: string, taken: ReadonlySet<string>): string {
-  const base =
+export type ProfileChanges = Partial<Pick<StoredProfile, 'name' | 'gameVersion' | 'memoryMb' | 'jvmArgs' | 'lastPlayedAt' | 'playAnyway'>>
+
+/**
+ * A folder-safe id for a new profile: its name in lowercase letters, digits and dashes, never a
+ * Windows device name, and unique (case-insensitively) among `taken`.
+ */
+export function profileIdFor(name: string, taken: Iterable<string>): string {
+  const used = new Set([...taken].map((id) => id.toLowerCase()))
+  let base =
     name
       .normalize('NFKD')
       .replace(/[̀-ͯ]/g, '')
@@ -45,14 +55,18 @@ export function profileIdFor(name: string, taken: ReadonlySet<string>): string {
       .slice(0, 40)
       .replace(/-+$/, '') || 'profile'
 
-  if (!taken.has(base)) {
+  if (RESERVED.test(base)) {
+    base = `${base}-profile`
+  }
+
+  if (!used.has(base)) {
     return base
   }
 
   for (let n = 2; ; n++) {
     const candidate = `${base}-${n}`
 
-    if (!taken.has(candidate)) {
+    if (!used.has(candidate)) {
       return candidate
     }
   }
@@ -68,6 +82,30 @@ export function cleanProfileName(value: unknown): string | null {
   return name.length > 0 ? name : null
 }
 
+/** "PvP (copy)", then "PvP (copy 2)"... a name not yet used. */
+export function copyName(name: string, taken: Iterable<string>): string {
+  const used = new Set([...taken].map((n) => n.toLowerCase()))
+  const base = name.replace(/ \(copy( \d+)?\)$/, '').slice(0, MAX_PROFILE_NAME - 10)
+
+  for (let n = 1; ; n++) {
+    const candidate = n === 1 ? `${base} (copy)` : `${base} (copy ${n})`
+
+    if (!used.has(candidate.toLowerCase())) {
+      return candidate
+    }
+  }
+}
+
+export interface ProfileStoreOptions {
+  /** profiles.json */
+  file: string
+  totalMemoryMb: number
+  /** The folder names in instances/, for adopting orphaned folders and keeping ids unique. */
+  listFolders: () => Promise<string[]>
+  now?: () => number
+  log?: (message: string) => void
+}
+
 /**
  * The profiles and which one is selected, saved to profiles.json. Every change is written right
  * away, one write at a time; listeners hear about each change.
@@ -75,49 +113,73 @@ export function cleanProfileName(value: unknown): string | null {
 export class ProfileStore {
   private data: ProfilesFile
   private writing: Promise<void> = Promise.resolve()
+  private readonly now: () => number
   /** Called after every change, so the window can show it. */
   onChange: (() => void) | null = null
 
-  constructor(
-    private readonly file: string,
-    private readonly totalMemoryMb: number,
-    private readonly now: () => number = Date.now
-  ) {
-    this.data = { version: 1, selected: DEFAULT_PROFILE_ID, profiles: [this.defaultProfile({})] }
+  constructor(private readonly options: ProfileStoreOptions) {
+    this.now = options.now ?? Date.now
+    this.data = { version: 1, selected: DEFAULT_PROFILE_ID, profiles: [this.newProfile(DEFAULT_PROFILE_ID, 'Default', {})] }
   }
 
   /**
-   * Reads profiles.json. Without one (first start, or after an update from a launcher without
-   * profiles), there is one profile, "Default", using instances/default and the memory and JVM
-   * arguments from the old global settings.
+   * Reads profiles.json. Without one (first start, or an update from a launcher without
+   * profiles), the Default profile gets the memory and JVM arguments the old launcher kept in
+   * launcher.json. Folders in instances/ that no profile owns (a profile restored from the trash,
+   * or a damaged profiles.json) become profiles again.
    */
   async load(legacy: LegacySettings = {}): Promise<void> {
     let parsed: Partial<ProfilesFile> | null = null
     let text: string | null = null
+    let dirty = false
 
     try {
-      text = await readFile(this.file, 'utf8')
+      text = await readFile(this.options.file, 'utf8')
       parsed = JSON.parse(text) as Partial<ProfilesFile>
     } catch {
       // A file that exists but can't be read is kept under another name, never overwritten.
       if (text !== null) {
-        await rename(this.file, `${this.file}.unreadable-${this.now()}`).catch(() => {})
+        const kept = `${this.options.file}.unreadable-${this.now()}`
+        await rename(this.options.file, kept).catch(() => {})
+        this.options.log?.(`profiles.json could not be read and was set aside as ${kept}`)
       }
 
       parsed = null
+      dirty = true
     }
 
-    const profiles = Array.isArray(parsed?.profiles) ? parsed.profiles.map((p) => this.sanitize(p)).filter((p): p is StoredProfile => p !== null) : []
-    const unique = profiles.filter((profile, index) => profiles.findIndex((other) => other.id === profile.id) === index)
+    const profiles: StoredProfile[] = []
 
-    if (unique.length === 0) {
-      unique.push(this.defaultProfile(legacy))
+    for (const entry of Array.isArray(parsed?.profiles) ? parsed.profiles : []) {
+      const profile = this.sanitize(entry)
+
+      if (profile && !profiles.some((p) => p.id.toLowerCase() === profile.id.toLowerCase())) {
+        profiles.push(profile)
+      }
     }
 
-    const selected = typeof parsed?.selected === 'string' && unique.some((p) => p.id === parsed!.selected) ? parsed.selected : unique[0]!.id
-    this.data = { version: 1, selected, profiles: unique }
+    if (parsed === null && !profiles.some((p) => p.id === DEFAULT_PROFILE_ID) && text === null) {
+      profiles.push(this.newProfile(DEFAULT_PROFILE_ID, 'Default', legacy))
+    }
 
-    if (parsed === null) {
+    for (const folder of await this.options.listFolders().catch(() => [] as string[])) {
+      if (PROFILE_ID.test(folder) && !profiles.some((p) => p.id.toLowerCase() === folder.toLowerCase())) {
+        const name = this.uniqueName(folder === DEFAULT_PROFILE_ID ? 'Default' : folder, profiles)
+        profiles.push(this.newProfile(folder, name, folder === DEFAULT_PROFILE_ID ? legacy : {}))
+        this.options.log?.(`Found the profile folder ${folder} and added it as a profile`)
+        dirty = true
+      }
+    }
+
+    if (profiles.length === 0) {
+      profiles.push(this.newProfile(DEFAULT_PROFILE_ID, 'Default', legacy))
+      dirty = true
+    }
+
+    const selected = typeof parsed?.selected === 'string' && profiles.some((p) => p.id === parsed!.selected) ? parsed.selected : profiles[0]!.id
+    this.data = { version: 1, selected, profiles }
+
+    if (dirty || parsed === null) {
       await this.save()
     }
   }
@@ -135,31 +197,41 @@ export class ProfileStore {
     return this.get(this.data.selected) ?? { ...this.data.profiles[0]! }
   }
 
-  /** Adds a profile with default settings (or a copy of another's) and selects it. */
-  async create(name: string, copyFrom?: StoredProfile): Promise<StoredProfile> {
-    const clean = cleanProfileName(name)
+  /** The id a new profile with this name would get (unique among profiles and folders). */
+  async nextId(name: string): Promise<string> {
+    const folders = await this.options.listFolders().catch(() => [] as string[])
+    return profileIdFor(name, [...this.data.profiles.map((p) => p.id), ...folders])
+  }
 
-    if (!clean) {
-      throw new Error('Give the profile a name.')
+  /**
+   * Adds a profile. Its memory and JVM arguments come from `from` (or default ones); only those
+   * fields are copied. Selects it when `select`.
+   */
+  async create(name: string, id: string, from: StoredProfile | null, select: boolean): Promise<StoredProfile> {
+    const clean = this.checkName(name, null)
+
+    if (!PROFILE_ID.test(id) || this.data.profiles.some((p) => p.id.toLowerCase() === id.toLowerCase())) {
+      throw new Error('That profile folder is already in use.')
     }
 
-    const id = profileIdFor(clean, new Set(this.data.profiles.map((p) => p.id)))
-    const profile: StoredProfile = {
-      ...this.defaultProfile({}),
-      ...(copyFrom ? { gameVersion: copyFrom.gameVersion, memoryMb: copyFrom.memoryMb, jvmArgs: copyFrom.jvmArgs } : {}),
-      id,
-      name: clean,
-      createdAt: this.now(),
-      lastPlayedAt: null
+    const profile = this.newProfile(id, clean, from ? { memoryMb: from.memoryMb, jvmArgs: from.jvmArgs } : {})
+
+    if (from) {
+      profile.gameVersion = from.gameVersion
     }
+
     this.data.profiles.push(profile)
-    this.data.selected = id
+
+    if (select) {
+      this.data.selected = id
+    }
+
     await this.save()
     return { ...profile }
   }
 
-  /** Changes a profile's name or game settings; values are checked and clamped like on load. */
-  async update(id: string, patch: Partial<Pick<StoredProfile, 'name' | 'gameVersion' | 'memoryMb' | 'jvmArgs' | 'lastPlayedAt'>>): Promise<StoredProfile> {
+  /** Changes a profile's name, game settings or play record; values are checked and clamped like on load. */
+  async update(id: string, changes: ProfileChanges): Promise<StoredProfile> {
     const index = this.data.profiles.findIndex((p) => p.id === id)
 
     if (index < 0) {
@@ -167,13 +239,14 @@ export class ProfileStore {
     }
 
     const current = this.data.profiles[index]!
+    const patch: ProfileChanges = { ...changes }
 
-    if ('name' in patch && cleanProfileName(patch.name) === null) {
-      throw new Error('Give the profile a name.')
+    if ('name' in patch) {
+      patch.name = this.checkName(patch.name, id)
     }
 
     if ('gameVersion' in patch && (typeof patch.gameVersion !== 'string' || !findGameVersion(patch.gameVersion))) {
-      throw new Error('Wave Client doesn\'t support that Minecraft version.')
+      throw new Error("Wave Client doesn't support that Minecraft version.")
     }
 
     const next = this.sanitize({ ...current, ...patch, id: current.id, createdAt: current.createdAt })!
@@ -182,6 +255,7 @@ export class ProfileStore {
     return { ...next }
   }
 
+  /** Removes a profile from the list (its folder is the caller's business). */
   async remove(id: string): Promise<void> {
     if (this.data.profiles.length <= 1) {
       throw new Error("You can't delete your only profile.")
@@ -196,7 +270,9 @@ export class ProfileStore {
     this.data.profiles.splice(index, 1)
 
     if (this.data.selected === id) {
-      this.data.selected = this.data.profiles[Math.max(0, index - 1)]!.id
+      // The most recently played one, else the first.
+      const played = [...this.data.profiles].sort((a, b) => (b.lastPlayedAt ?? 0) - (a.lastPlayedAt ?? 0))[0]!
+      this.data.selected = played.lastPlayedAt ? played.id : this.data.profiles[0]!.id
     }
 
     await this.save()
@@ -211,15 +287,47 @@ export class ProfileStore {
     await this.save()
   }
 
-  private defaultProfile(legacy: LegacySettings): StoredProfile {
+  /** A clean name, refusing an empty one or one another profile already has. */
+  checkName(value: unknown, ownId: string | null): string {
+    const name = cleanProfileName(value)
+
+    if (!name) {
+      throw new Error('Give the profile a name.')
+    }
+
+    if (this.data.profiles.some((p) => p.id !== ownId && p.name.toLowerCase() === name.toLowerCase())) {
+      throw new Error(`A profile named ${name} already exists.`)
+    }
+
+    return name
+  }
+
+  private uniqueName(name: string, profiles: StoredProfile[]): string {
+    const used = new Set(profiles.map((p) => p.name.toLowerCase()))
+
+    if (!used.has(name.toLowerCase())) {
+      return name
+    }
+
+    for (let n = 2; ; n++) {
+      const candidate = `${name} ${n}`
+
+      if (!used.has(candidate.toLowerCase())) {
+        return candidate
+      }
+    }
+  }
+
+  private newProfile(id: string, name: string, legacy: LegacySettings): StoredProfile {
     return this.sanitize({
-      id: DEFAULT_PROFILE_ID,
-      name: 'Default',
+      id,
+      name,
       gameVersion: DEFAULT_GAME_VERSION.minecraft,
       memoryMb: legacy.memoryMb ?? DEFAULT_MEMORY_MB,
       jvmArgs: legacy.jvmArgs ?? '',
       createdAt: this.now(),
-      lastPlayedAt: null
+      lastPlayedAt: null,
+      playAnyway: null
     })!
   }
 
@@ -232,7 +340,7 @@ export class ProfileStore {
       return null
     }
 
-    const range = memoryRangeMb(this.totalMemoryMb)
+    const range = memoryRangeMb(this.options.totalMemoryMb)
     const memory = typeof value.memoryMb === 'number' && Number.isFinite(value.memoryMb) ? Math.round(value.memoryMb) : DEFAULT_MEMORY_MB
 
     return {
@@ -242,7 +350,8 @@ export class ProfileStore {
       memoryMb: Math.min(range.max, Math.max(MIN_MEMORY_MB, memory)),
       jvmArgs: typeof value.jvmArgs === 'string' ? value.jvmArgs.slice(0, MAX_JVM_ARGS_LENGTH) : '',
       createdAt: typeof value.createdAt === 'number' && Number.isFinite(value.createdAt) ? value.createdAt : this.now(),
-      lastPlayedAt: typeof value.lastPlayedAt === 'number' && Number.isFinite(value.lastPlayedAt) ? value.lastPlayedAt : null
+      lastPlayedAt: typeof value.lastPlayedAt === 'number' && Number.isFinite(value.lastPlayedAt) ? value.lastPlayedAt : null,
+      playAnyway: typeof value.playAnyway === 'string' && value.playAnyway.length <= 128 ? value.playAnyway : null
     }
   }
 
@@ -257,12 +366,12 @@ export class ProfileStore {
   }
 
   private async write(): Promise<void> {
-    const temp = `${this.file}.tmp`
-    await mkdir(dirname(this.file), { recursive: true })
+    const temp = `${this.options.file}.tmp`
+    await mkdir(dirname(this.options.file), { recursive: true })
 
     try {
       await writeFile(temp, JSON.stringify(this.data, null, 2))
-      await rename(temp, this.file)
+      await rename(temp, this.options.file)
     } catch (error) {
       await rm(temp, { force: true }).catch(() => {})
       throw error

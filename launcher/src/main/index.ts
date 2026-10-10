@@ -1,11 +1,11 @@
-import { appendFile, mkdir, readdir, stat } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, readdir, stat } from 'node:fs/promises'
 import { totalmem, release } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { BrowserWindow, Menu, app, dialog, net, powerMonitor, protocol, session, shell } from 'electron'
 
-import { IpcChannels, type AfterLaunch, type AppInfo } from '@shared/ipc'
+import { IpcChannels, type AfterLaunch, type AppInfo, type GameState } from '@shared/ipc'
 
 import { AccountStore } from './accounts/store'
 import { AuthService } from './auth/service'
@@ -13,11 +13,15 @@ import { LAUNCHER_NAME, msaClientId } from './config'
 import { GameController } from './controller'
 import { electronSecretBox } from './electron/secret-box'
 import { PINS } from './game/pins'
+import { GAME_VERSIONS } from './game/versions'
 import { loadClientId } from './install-id'
-import { registerIpc } from './ipc'
+import { confirmDeleteProfile, confirmRiskyJvmArgs, registerIpc } from './ipc'
+import { ModsService } from './mods/service'
 import { DownloadQueue } from './net/downloads'
 import { HttpClient } from './net/http'
 import { inside, launcherPaths } from './paths'
+import { ProfileActions } from './profile-actions'
+import { ProfileStore, type LegacySettings } from './profiles'
 import { SettingsStore, memoryRangeMb } from './settings'
 
 const root = process.env.WAVE_LAUNCHER_HOME ? resolve(process.env.WAVE_LAUNCHER_HOME) : join(app.getPath('appData'), 'WaveClient')
@@ -82,7 +86,12 @@ async function start(): Promise<void> {
   const accounts = new AccountStore(paths.accountsFile, electronSecretBox, log)
   await accounts.load()
   const totalMemoryMb = Math.floor(totalmem() / (1024 * 1024))
-  const settings = new SettingsStore(paths.settingsFile, totalMemoryMb)
+  // Memory and JVM arguments used to be launcher-wide: the Default profile takes them over, read
+  // before the settings store rewrites the file without them.
+  const legacy = await readLegacySettings(paths.settingsFile)
+  const profiles = new ProfileStore({ file: join(root, 'profiles.json'), totalMemoryMb, listFolders: () => readdir(paths.instances), log })
+  await profiles.load(legacy)
+  const settings = new SettingsStore(paths.settingsFile)
   await settings.load()
   const clientId = msaClientId(process.env.WAVE_MSA_CLIENT_ID, import.meta.env.MAIN_VITE_MSA_CLIENT_ID)
   const auth = new AuthService({
@@ -100,6 +109,7 @@ async function start(): Promise<void> {
     secureStorage: accounts.persistent,
     totalMemoryMb,
     memoryRangeMb: memoryRangeMb(totalMemoryMb),
+    gameVersions: GAME_VERSIONS.map((version) => ({ id: version.minecraft, label: `Minecraft ${version.minecraft}`, java: version.java })),
     platform: process.platform
   }
 
@@ -109,18 +119,73 @@ async function start(): Promise<void> {
     }
   }
 
-  const game = new GameController({
+  // Set below; the mods service only asks once the game controller exists.
+  let game: GameController | null = null
+  const mods = new ModsService({
+    paths,
+    profile: (id) => profiles.get(id),
+    isRunning: (id) => game?.isBusyWith(id) === true,
+    bundledModJar: findBundledModJar,
+    trash: (path) => shell.trashItem(path),
+    log
+  })
+
+  let profilesTimer: NodeJS.Timeout | null = null
+  let actions: ProfileActions | null = null
+  // Coalesced: a launch changes the running state and the last played time at about the same moment.
+  const emitProfiles = (): void => {
+    profilesTimer ??= setTimeout(() => {
+      profilesTimer = null
+      void actions
+        ?.views()
+        .then((views) => send(IpcChannels.eventProfiles, views))
+        .catch((error: unknown) => log(`Couldn't list profiles: ${String(error)}`))
+    }, 50)
+  }
+
+  let busy = false
+  const onState = (state: GameState): void => {
+    send(IpcChannels.eventGame, state)
+    const nowBusy = state.phase === 'preparing' || state.phase === 'downloading' || state.phase === 'starting' || state.phase === 'running'
+
+    if (nowBusy !== busy) {
+      busy = nowBusy
+      emitProfiles()
+    }
+  }
+
+  game = new GameController({
     context: { http, queue, paths, platform: process.platform, arch: process.arch, osVersion: release() },
     auth,
     accounts,
     settings,
+    profiles,
+    // Waits for any change to the folder in progress, so it checks what will be loaded.
+    checkMods: (id) => mods.exclusive(id, () => mods.launchCheck(id)),
     bundledModJar: findBundledModJar,
     clientId: () => loadClientId(join(root, 'install-id')),
     launcherName: LAUNCHER_NAME,
     launcherVersion: app.getVersion(),
-    emitState: (state) => send(IpcChannels.eventGame, state),
+    emitState: onState,
     emitLines: batchLines((lines) => send(IpcChannels.eventLog, lines)),
     window: { afterLaunch, afterExit },
+    log
+  })
+
+  const controller = game
+  actions = new ProfileActions({
+    paths,
+    profiles,
+    mods,
+    game: {
+      get busy() {
+        return controller.busy
+      },
+      isBusyWith: (id) => controller.isBusyWith(id)
+    },
+    trash: (path) => shell.trashItem(path),
+    confirmRiskyJvmArgs: (name, args) => confirmRiskyJvmArgs(mainWindow, name, args),
+    confirmDelete: (name, contents) => confirmDeleteProfile(mainWindow, name, contents),
     log
   })
 
@@ -132,11 +197,15 @@ async function start(): Promise<void> {
     accounts,
     auth,
     settings,
-    game,
+    game: controller,
+    profiles: actions,
+    mods,
+    emitProfiles,
     log
   })
   // Refreshes can mark an account as needing sign-in or rename it; the window hears about every change.
   accounts.onChange = emitAccounts
+  profiles.onChange = emitProfiles
 
   log(`Wave Client ${app.getVersion()} starting; data in ${root}; sign-in ${clientId ? 'configured' : 'not configured'}; secure storage ${accounts.persistent ? 'on' : 'off'}`)
   createWindow()
@@ -147,7 +216,7 @@ async function start(): Promise<void> {
 
   app.on('window-all-closed', () => {
     // Keep running while the game does, so its output and crash report aren't lost.
-    if (!game.running) {
+    if (!controller.running) {
       app.quit()
     }
   })
@@ -160,7 +229,7 @@ async function start(): Promise<void> {
     shuttingDown = true
   })
   app.on('before-quit', (event) => {
-    if (!game.running || quitConfirmed || shuttingDown) {
+    if (!controller.running || quitConfirmed || shuttingDown) {
       return
     }
 
@@ -271,6 +340,10 @@ function isTrustedUrl(url: string): boolean {
 }
 
 function hardenWebContents(): void {
+  app.on('session-created', (created) => {
+    // A dragged-in link or a download request never writes a file from the page.
+    created.on('will-download', (event) => event.preventDefault())
+  })
   app.on('web-contents-created', (_event, contents) => {
     contents.setWindowOpenHandler(() => ({ action: 'deny' }))
     contents.on('will-navigate', (event, url) => {
@@ -363,6 +436,19 @@ async function findBundledModJar(): Promise<string> {
   return join(dir, withTimes[0]!.name)
 }
 
+/** memoryMb and jvmArgs from a launcher.json written before profiles existed. */
+async function readLegacySettings(file: string): Promise<LegacySettings> {
+  try {
+    const raw = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>
+    return {
+      ...(typeof raw.memoryMb === 'number' ? { memoryMb: raw.memoryMb } : {}),
+      ...(typeof raw.jvmArgs === 'string' ? { jvmArgs: raw.jvmArgs } : {})
+    }
+  } catch {
+    return {}
+  }
+}
+
 /** CI check: the window loads, the preload bridge exists and the API answers, then exit. */
 async function runSmokeTest(): Promise<void> {
   try {
@@ -373,6 +459,9 @@ async function runSmokeTest(): Promise<void> {
         const info = await window.wave.app.info()
         const refused = await window.wave.game.launch().then(() => null, (error) => error.message)
         const settings = await window.wave.settings.set({ javaPath: '/bin/sh' })
+        const profiles = await window.wave.profiles.list()
+        // A File made up by script has no path on disk: nothing is copied.
+        const forged = await window.wave.mods.addDropped(profiles[0].id, [new File(['x'], 'a.jar')])
         // XHR, not fetch: the wave: scheme serves XHR, so only the CSP can stop this request.
         const fetchBlocked = await new Promise((done) => {
           const request = new XMLHttpRequest()
@@ -385,12 +474,27 @@ async function runSmokeTest(): Promise<void> {
             done(true)
           }
         })
-        return { bridge: typeof window.wave, keys: Object.keys(window.wave).sort().join(','), mc: info.minecraftVersion, memory: info.memoryRangeMb.min, refused, javaPath: settings.javaPath, fetchBlocked, root: document.getElementById('root')?.childElementCount ?? -1 }
+        return {
+          bridge: typeof window.wave,
+          keys: Object.keys(window.wave).sort().join(','),
+          mc: info.minecraftVersion,
+          versions: info.gameVersions.map((v) => v.id).join(','),
+          memory: info.memoryRangeMb.min,
+          refused,
+          javaPath: settings.javaPath,
+          profiles: profiles.map((p) => p.id + (p.selected ? '*' : '')).join(','),
+          forged: forged.added.length + ':' + forged.skipped.map((s) => s.reason).join(','),
+          fetchBlocked,
+          root: document.getElementById('root')?.childElementCount ?? -1
+        }
       })()`
-    )) as { bridge: string; keys: string; mc: string; memory: number; refused: string | null; javaPath: string | null; fetchBlocked: boolean; root: number }
+    )) as { bridge: string; keys: string; mc: string; versions: string; memory: number; refused: string | null; javaPath: string | null; profiles: string; forged: string; fetchBlocked: boolean; root: number }
     const ok =
       result.bridge === 'object' &&
-      result.keys === 'accounts,app,game,logs,settings' &&
+      result.keys === 'accounts,app,game,logs,mods,profiles,settings' &&
+      result.versions === PINS.minecraft &&
+      result.profiles === 'default*' &&
+      result.forged === '0:not-a-file' &&
       result.mc === PINS.minecraft &&
       result.memory === 1024 &&
       result.refused === 'Sign in with a Microsoft account first.' &&

@@ -9,23 +9,20 @@ import { DEFAULT_SETTINGS } from '@shared/ipc'
 import { SettingsStore, riskyJvmArgs, sanitizeSettings, splitJvmArgs } from './settings'
 
 describe('sanitizeSettings', () => {
-  it('fills defaults and drops unknown keys', () => {
-    expect(sanitizeSettings({ evil: true }, 16384)).toEqual(DEFAULT_SETTINGS)
-    expect(sanitizeSettings(null, 16384)).toEqual(DEFAULT_SETTINGS)
+  it('fills defaults and drops unknown keys (memory and JVM arguments now belong to profiles)', () => {
+    expect(sanitizeSettings({ evil: true, memoryMb: 8192, jvmArgs: '-Xss2M' })).toEqual(DEFAULT_SETTINGS)
+    expect(sanitizeSettings(null)).toEqual(DEFAULT_SETTINGS)
   })
 
-  it('clamps memory to three quarters of the machine and sizes to sane ranges', () => {
-    expect(sanitizeSettings({ memoryMb: 999_999 }, 8192).memoryMb).toBe(6144)
-    expect(sanitizeSettings({ memoryMb: 10 }, 8192).memoryMb).toBe(1024)
-    expect(sanitizeSettings({}, 4096).memoryMb).toBe(3072)
-    expect(sanitizeSettings({ width: -5, height: 1e9 }, 8192)).toMatchObject({ width: 320, height: 16384 })
-    expect(sanitizeSettings({ memoryMb: Number.NaN, afterLaunch: 'explode' }, 8192)).toMatchObject({ memoryMb: 4096, afterLaunch: 'keep-open' })
+  it('clamps sizes to sane ranges', () => {
+    expect(sanitizeSettings({ width: -5, height: 1e9 })).toMatchObject({ width: 320, height: 16384 })
+    expect(sanitizeSettings({ afterLaunch: 'explode' })).toMatchObject({ afterLaunch: 'keep-open' })
   })
 
   it('accepts clearing the Java path', () => {
-    expect(sanitizeSettings({ javaPath: ' /usr/bin/java ' }, 8192).javaPath).toBe('/usr/bin/java')
-    expect(sanitizeSettings({ javaPath: null }, 8192, { ...DEFAULT_SETTINGS, javaPath: '/x' }).javaPath).toBeNull()
-    expect(sanitizeSettings({ javaPath: '   ' }, 8192, { ...DEFAULT_SETTINGS, javaPath: '/x' }).javaPath).toBe('/x')
+    expect(sanitizeSettings({ javaPath: ' /usr/bin/java ' }).javaPath).toBe('/usr/bin/java')
+    expect(sanitizeSettings({ javaPath: null }, { ...DEFAULT_SETTINGS, javaPath: '/x' }).javaPath).toBeNull()
+    expect(sanitizeSettings({ javaPath: '   ' }, { ...DEFAULT_SETTINGS, javaPath: '/x' }).javaPath).toBe('/x')
   })
 })
 
@@ -89,15 +86,15 @@ describe('SettingsStore', () => {
 
   it('persists changes and survives a corrupt file', async () => {
     const file = join(dir, 'launcher.json')
-    const store = new SettingsStore(file, 16384)
+    const store = new SettingsStore(file)
     await store.load()
-    await store.set({ memoryMb: 6000, fullscreen: true })
-    expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ memoryMb: 6000, fullscreen: true })
+    await store.set({ width: 1600, fullscreen: true })
+    expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ width: 1600, fullscreen: true })
 
-    const again = new SettingsStore(file, 16384)
-    expect((await again.load()).memoryMb).toBe(6000)
+    const again = new SettingsStore(file)
+    expect((await again.load()).width).toBe(1600)
 
     await writeFile(file, '{not json')
-    expect(await new SettingsStore(file, 16384).load()).toEqual(DEFAULT_SETTINGS)
+    expect(await new SettingsStore(file).load()).toEqual(DEFAULT_SETTINGS)
   })
 })

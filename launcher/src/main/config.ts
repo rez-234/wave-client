@@ -19,8 +19,8 @@ export function msaClientId(runtime: string | undefined, buildTime: string | und
 
 export const LAUNCHER_NAME = 'wave-client'
 
-/** Hosts whose pages the UI may open in the browser (sign-in help, account settings). */
-const EXTERNAL_HOSTS = ['aka.ms', 'microsoft.com', 'live.com', 'xbox.com', 'minecraft.net']
+/** Hosts whose pages the UI may open in the browser (sign-in help, account settings, finding a missing mod). */
+const EXTERNAL_HOSTS = ['aka.ms', 'microsoft.com', 'live.com', 'xbox.com', 'minecraft.net', 'modrinth.com']
 
 export function isAllowedExternalUrl(value: unknown): value is string {
   if (typeof value !== 'string' || value.length > 2048) {
