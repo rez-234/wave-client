@@ -56,18 +56,20 @@ export function splitJvmArgs(text: string): string[] {
       quote = char
       started = true
     } else if (/\s/.test(char)) {
-      if (started) {
+      // An empty argument ("" on its own) would be taken as the main class, so it is dropped.
+      if (started && current.length > 0) {
         args.push(current)
-        current = ''
-        started = false
       }
+
+      current = ''
+      started = false
     } else {
       current += char
       started = true
     }
   }
 
-  if (started) {
+  if (started && current.length > 0) {
     args.push(current)
   }
 
@@ -77,6 +79,7 @@ export function splitJvmArgs(text: string): string[] {
 /** launcher.json: preferences only, never secrets. */
 export class SettingsStore {
   private current: LauncherSettings
+  private writing: Promise<void> = Promise.resolve()
 
   constructor(
     private readonly file: string,
@@ -102,10 +105,33 @@ export class SettingsStore {
   async set(changes: unknown): Promise<LauncherSettings> {
     const patch = typeof changes === 'object' && changes !== null ? changes : {}
     this.current = sanitizeSettings({ ...this.current, ...patch }, this.totalMemoryMb, this.current)
+    const saved = this.get()
+    // One write at a time (quick changes overlap), each writing the settings as they are by then.
+    const run = this.writing.then(
+      () => this.write(),
+      () => this.write()
+    )
+    this.writing = run.catch(() => {})
+    await run
+    return saved
+  }
+
+  private async write(): Promise<void> {
     const temp = `${this.file}.tmp`
     await mkdir(dirname(this.file), { recursive: true })
     await writeFile(temp, JSON.stringify(this.current, null, 2))
     await rename(temp, this.file)
-    return this.get()
   }
+}
+
+/**
+ * JVM options that run or load code from elsewhere: commands on errors, agents, extra class or
+ * mod paths, argument files, other log4j configurations. The JVM arguments field is free-form on
+ * purpose, but saving one of these needs the player's confirmation in a native dialog, which a
+ * script in the page can't give.
+ */
+export function riskyJvmArgs(args: readonly string[]): string[] {
+  return args.filter((arg) =>
+    /^(-XX:[+-]?(OnError|OnOutOfMemoryError|VMOptionsFile|Flags)=|-javaagent:|-agentlib:|-agentpath:|-Xbootclasspath|-(cp|classpath|jar)$|--class-path|--module-path|--patch-module|--upgrade-module-path|-D(java\.system\.class\.loader|java\.library\.path|jdk\.module\.|fabric\.addMods|fabric\.gameJarPath|fabric\.remapClasspathFile|fabric\.classPathGroups|log4j2?\.configurationFile)|@)/i.test(arg)
+  )
 }

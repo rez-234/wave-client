@@ -20,7 +20,16 @@ export default defineConfig({
   },
   renderer: {
     resolve: { alias: { ...shared, '@renderer': resolve('src/renderer/src') } },
-    plugins: [react()],
+    plugins: [
+      react(),
+      {
+        // The page makes no requests of its own (everything goes over IPC), so the built page
+        // allows none; the dev server needs its websocket for hot reload.
+        name: 'wave-dev-csp',
+        apply: 'serve',
+        transformIndexHtml: (html) => html.replace("connect-src 'none'", "connect-src 'self' ws://localhost:*")
+      }
+    ],
     build: { minify: true },
     // The design tokens live in the repository's shared/ folder, next to the mod.
     server: { fs: { allow: [resolve('..')] } }

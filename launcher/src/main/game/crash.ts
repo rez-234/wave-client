@@ -15,7 +15,8 @@ export interface ExitInfo {
 }
 
 const LAST_LINES = 500
-const CRASH_SAVED = /#@!@# Game crashed! Crash report saved to: #@!@# (.+)$/
+/** Minecraft prints this straight to stdout (not through log4j) when it saves a crash report. */
+const CRASH_SAVED = /^#@!@# Game crashed! Crash report saved to: #@!@# (.+)$/
 /** Our own mod and Fabric's are never "suspects" just for appearing in a stack trace. */
 const NEVER_SUSPECT = new Set(['minecraft', 'java', 'fabricloader', 'fabric-api', 'mixinextras'])
 
@@ -67,16 +68,29 @@ function formatLine(line: LogLine): string {
 
 async function findCrashReport(info: ExitInfo): Promise<string | null> {
   for (let i = info.lines.length - 1; i >= 0; i--) {
-    const match = CRASH_SAVED.exec(info.lines[i]!.message)
+    const line = info.lines[i]!
+    // Only the game's own raw output line counts: anyone can put the same text in a chat message,
+    // which the game logs through log4j. The path must also be a crash report written during this
+    // launch; otherwise (a mis-decoded path, say) the folder is searched instead.
+    const match = line.thread === null && line.logger === null ? CRASH_SAVED.exec(line.message) : null
 
-    if (match && isCrashFile(info.gameDir, match[1]!.trim())) {
-      return resolve(info.gameDir, match[1]!.trim())
+    if (match) {
+      const path = resolve(info.gameDir, match[1]!.trim())
+
+      if (isCrashFile(info.gameDir, path) && (await writtenSince(path, info.startedAt))) {
+        return path
+      }
     }
   }
 
   const dir = join(info.gameDir, 'crash-reports')
   const candidates = await newestFiles(dir, (name) => /^crash-.*\.txt$/.test(name), info.startedAt)
   return candidates[0] ?? null
+}
+
+async function writtenSince(path: string, since: number): Promise<boolean> {
+  const info = await stat(path).catch(() => null)
+  return info !== null && info.isFile() && info.mtimeMs >= since - 2000
 }
 
 async function findJvmError(info: ExitInfo): Promise<string | null> {

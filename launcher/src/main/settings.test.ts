@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { DEFAULT_SETTINGS } from '@shared/ipc'
 
-import { SettingsStore, sanitizeSettings, splitJvmArgs } from './settings'
+import { SettingsStore, riskyJvmArgs, sanitizeSettings, splitJvmArgs } from './settings'
 
 describe('sanitizeSettings', () => {
   it('fills defaults and drops unknown keys', () => {
@@ -29,9 +29,29 @@ describe('sanitizeSettings', () => {
   })
 })
 
+describe('riskyJvmArgs', () => {
+  it('picks out options that run or load code, and nothing else', () => {
+    const args = splitJvmArgs(
+      '-Xmx6G -XX:+UseZGC -XX:MaxGCPauseMillis=50 -Dsodium.checks=false -XX:OnOutOfMemoryError="cmd /c calc" -javaagent:\\\\h\\a.jar -agentlib:jdwp=x -Xbootclasspath/a:x -cp x @args.txt -Dfabric.addMods=x -Dlog4j2.configurationFile=http://x -Djava.library.path=x'
+    )
+    expect(riskyJvmArgs(args)).toEqual([
+      '-XX:OnOutOfMemoryError=cmd /c calc',
+      '-javaagent:\\\\h\\a.jar',
+      '-agentlib:jdwp=x',
+      '-Xbootclasspath/a:x',
+      '-cp',
+      '@args.txt',
+      '-Dfabric.addMods=x',
+      '-Dlog4j2.configurationFile=http://x',
+      '-Djava.library.path=x'
+    ])
+  })
+})
+
 describe('splitJvmArgs', () => {
   it('splits on whitespace and keeps quoted parts together', () => {
-    expect(splitJvmArgs('  -XX:+UseZGC   -Dname="a b" \'-Dx=$HOME\' ""')).toEqual(['-XX:+UseZGC', '-Dname=a b', '-Dx=$HOME', ''])
+    expect(splitJvmArgs('  -XX:+UseZGC   -Dname="a b" \'-Dx=$HOME\' ""')).toEqual(['-XX:+UseZGC', '-Dname=a b', '-Dx=$HOME'])
+    expect(splitJvmArgs('"" \'\' -Xss2M ""')).toEqual(['-Xss2M'])
     expect(splitJvmArgs('')).toEqual([])
   })
 })

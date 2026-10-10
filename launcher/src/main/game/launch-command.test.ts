@@ -53,6 +53,8 @@ describe('buildLaunchCommand', () => {
       '-Dlog4j.configurationFile=/assets/log_configs/client-1.21.2.xml',
       '-Xms1024M',
       '-Xmx4096M',
+      '-Dstdout.encoding=UTF-8',
+      '-Dstderr.encoding=UTF-8',
       '-Dfabric.addMods=/client',
       // The user's own flags come last, so their -Xmx wins.
       '-XX:+UseZGC',

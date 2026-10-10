@@ -105,6 +105,9 @@ export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
   }
 
   jvm.push(`-Xms${Math.min(settings.memoryMb, 1024)}M`, `-Xmx${settings.memoryMb}M`)
+  // Output printed straight to stdout/stderr (not through log4j) is read as UTF-8; on Windows Java
+  // would otherwise write it in the ANSI code page, mangling non-ASCII paths and messages.
+  jvm.push('-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8')
 
   if (input.addMods.length > 0) {
     jvm.push(`-Dfabric.addMods=${input.addMods.join(separator)}`)

@@ -73,6 +73,17 @@ jobs:
         env:
           WAVE_SMOKE_TEST: '1'
           WAVE_LAUNCHER_HOME: ${{ runner.temp }}/wave-smoke
+      - name: Smoke test from an unusual folder
+        # Folder names with [ ] ~ % are spelled differently by Node and Chromium in file URLs, which
+        # once made the launcher refuse its own page.
+        run: |
+          app="$RUNNER_TEMP/Wave [beta]~1 100%/app"
+          mkdir -p "$app"
+          cp -r out package.json "$app/"
+          xvfb-run -a npx electron "$app"
+        env:
+          WAVE_SMOKE_TEST: '1'
+          WAVE_LAUNCHER_HOME: ${{ runner.temp }}/wave-smoke-2
 
   e2e:
     # The launcher's install and launch code against Mojang's and Fabric's real servers: installs

@@ -9,14 +9,18 @@ import { SettingRow } from './SettingRow'
 interface JavaSettingProps {
   javaPath: string | null
   disabled: boolean
+  /** Picks, checks and saves a Java (the main process does all three). */
   onPick: () => Promise<{ path: string; version: string } | null>
-  onSave: (javaPath: string | null) => Promise<unknown>
+  /** Loads the settings as saved after a pick. */
+  onPicked: () => Promise<unknown>
+  /** Goes back to the bundled Java. */
+  onReset: () => Promise<unknown>
   /** Checks the saved Java again. */
   onCheck: () => Promise<JavaStatus | null>
 }
 
 /** The bundled Java (recommended), or a Java executable the player picks. */
-export function JavaSetting({ javaPath, disabled, onPick, onSave, onCheck }: JavaSettingProps): JSX.Element {
+export function JavaSetting({ javaPath, disabled, onPick, onPicked, onReset, onCheck }: JavaSettingProps): JSX.Element {
   const [picked, setPicked] = useState<{ path: string; version: string } | null>(null)
   const [status, setStatus] = useState<JavaStatus | null>(null)
   const [picking, setPicking] = useState(false)
@@ -46,7 +50,7 @@ export function JavaSetting({ javaPath, disabled, onPick, onSave, onCheck }: Jav
       .then(async (result) => {
         if (result) {
           setPicked(result)
-          await onSave(result.path)
+          await onPicked()
         }
       })
       .catch((reason: unknown) => setError(errorMessage(reason, "That file couldn't be used as Java.")))
@@ -79,7 +83,7 @@ export function JavaSetting({ javaPath, disabled, onPick, onSave, onCheck }: Jav
     >
       <div className="button-row">
         {javaPath !== null && (
-          <Button variant="ghost" size="sm" disabled={disabled} onClick={() => void onSave(null)}>
+          <Button variant="ghost" size="sm" disabled={disabled} onClick={() => void onReset()}>
             Use bundled Java
           </Button>
         )}

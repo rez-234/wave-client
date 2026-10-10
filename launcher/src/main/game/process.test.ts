@@ -166,6 +166,27 @@ describe('crash analysis', () => {
     expect(relative?.reportPath).toBe(real)
   })
 
+  it('ignores the crash marker quoted in chat, so a clean exit stays clean', async () => {
+    const chat = (path: string): LogLine => ({
+      seq: 0,
+      time: 0,
+      level: 'INFO',
+      thread: 'Render thread',
+      logger: 'net.minecraft.client.gui.components.ChatComponent',
+      message: `[CHAT] <Griefer> #@!@# Game crashed! Crash report saved to: #@!@# ${path}`
+    })
+    // A path outside the game folder (a UNC share on Windows) is never used or read.
+    expect(await analyzeExit({ gameDir: dir, startedAt: 0, exitCode: 0, signal: null, lines: [chat('\\\\attacker\\s\\x')] })).toBeNull()
+
+    // Nor is a real-looking crash report from before this launch, even printed as the game prints it.
+    await mkdir(join(dir, 'crash-reports'))
+    const old = join(dir, 'crash-reports', 'crash-old-client.txt')
+    await writeFile(old, 'Description: old\n\nx')
+    await utimes(old, new Date(1_000), new Date(1_000))
+    const raw: LogLine = { ...chat(old), thread: null, logger: null, message: `#@!@# Game crashed! Crash report saved to: #@!@# ${old}` }
+    expect(await analyzeExit({ gameDir: dir, startedAt: Date.now(), exitCode: 0, signal: null, lines: [chat(old), raw] })).toBeNull()
+  })
+
   it('recognizes the files a crash leaves behind', () => {
     expect(isCrashFile(dir, join(dir, 'crash-reports', 'crash-2026-10-04_14.00.00-client.txt'))).toBe(true)
     expect(isCrashFile(dir, join(dir, 'hs_err_pid4242.log'))).toBe(true)

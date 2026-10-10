@@ -69,7 +69,9 @@ export class GameSession {
       cwd: this.command.cwd,
       env: gameEnvironment(process.env),
       stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: false
+      // javaw.exe has no console. A java.exe without a javaw.exe beside it would open one, and
+      // closing it would kill the game, so it is hidden; javaw's own window isn't touched.
+      windowsHide: /(^|[\\/])java\.exe$/i.test(this.command.java)
     })
     this.child = child
 

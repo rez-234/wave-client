@@ -111,7 +111,8 @@ export function SettingsView({
               disabled={disabled}
               onPick={() => window.wave.settings.pickJava()}
               onCheck={checkJava}
-              onSave={(javaPath) => save({ javaPath })}
+              onPicked={() => save({})}
+              onReset={() => save({ javaPath: null })}
             />
             <JvmArgsSetting jvmArgs={settings.jvmArgs} disabled={disabled} onSave={(jvmArgs) => save({ jvmArgs })} />
           </SettingsSection>

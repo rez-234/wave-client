@@ -14,7 +14,7 @@ import { isCrashFile } from './game/crash'
 import { probeJava } from './game/java'
 import { PINS } from './game/pins'
 import { instanceDir, type LauncherPaths } from './paths'
-import type { SettingsStore } from './settings'
+import { riskyJvmArgs, splitJvmArgs, type SettingsStore } from './settings'
 
 export interface IpcDeps {
   window: () => BrowserWindow | null
@@ -155,7 +155,26 @@ export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
   })
 
   handle(IpcChannels.settingsGet, () => deps.settings.get())
-  handle(IpcChannels.settingsSet, (patch: unknown) => deps.settings.set(patch))
+
+  handle(IpcChannels.settingsSet, async (changes: unknown) => {
+    const patch: Record<string, unknown> = typeof changes === 'object' && changes !== null ? { ...changes } : {}
+
+    // What runs as Java comes only from the file picker below (or back to the bundled Java).
+    if ('javaPath' in patch && patch.javaPath !== null) {
+      delete patch.javaPath
+    }
+
+    if (typeof patch.jvmArgs === 'string') {
+      const before = new Set(riskyJvmArgs(splitJvmArgs(deps.settings.get().jvmArgs)))
+      const added = riskyJvmArgs(splitJvmArgs(patch.jvmArgs)).filter((arg) => !before.has(arg))
+
+      if (added.length > 0 && !(await confirmRiskyJvmArgs(deps.window(), added))) {
+        throw new Error("The JVM arguments weren't saved.")
+      }
+    }
+
+    return deps.settings.set(patch)
+  })
 
   handle(IpcChannels.settingsPickJava, async () => {
     const window = deps.window()
@@ -177,6 +196,7 @@ export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
       throw new Error(`That's Java ${java.version}. Minecraft ${PINS.minecraft} needs Java 21 or newer.`)
     }
 
+    await deps.settings.set({ javaPath: path })
     return { path, version: java.version }
   })
 
@@ -240,6 +260,20 @@ export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
   })
 
   return { emitAccounts }
+}
+
+/** A native dialog, which script in the page can't answer. */
+async function confirmRiskyJvmArgs(window: BrowserWindow | null, args: string[]): Promise<boolean> {
+  const options = {
+    type: 'warning' as const,
+    buttons: ['Cancel', 'Save anyway'],
+    defaultId: 0,
+    cancelId: 0,
+    message: 'These JVM arguments can run other programs or code on your computer',
+    detail: `${args.join('\n')}\n\nOnly save them if you added them yourself and trust where they came from.`
+  }
+  const { response } = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options)
+  return response === 1
 }
 
 function fromTrustedPage(event: IpcMainInvokeEvent, deps: IpcDeps): boolean {

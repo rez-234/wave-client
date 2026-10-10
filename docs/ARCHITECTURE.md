@@ -250,12 +250,21 @@ Pinned versions (`game/pins.ts`, checked against `mod/gradle.properties` by a te
 ### Security
 
 - Window: `contextIsolation`, `sandbox`, no `nodeIntegration`; the preload is one CommonJS file
-  exposing only `window.wave`. New windows, navigation away from the app page, webviews and
-  permission requests are denied (clipboard writes allowed for Copy buttons). Strict CSP in the
-  page.
-- IPC: every handler checks the sender is the main window's top frame on the app's own URL and
+  exposing only `window.wave`. The built page is served from its own `wave://launcher/` origin,
+  not `file://` (which could read any local file, and whose URLs Node and Chromium spell
+  differently for some folder names). New windows, navigation away from the app page, webviews
+  and permission requests are denied (clipboard writes allowed for Copy buttons). Strict CSP in
+  the page, with no network requests at all (`connect-src 'none'`; the dev server adds its
+  websocket).
+- IPC: every handler checks the sender is the main window's top frame on the app's own page and
   validates arguments; only plain messages cross back. Help links open in the browser only for
-  https Microsoft, Xbox and Minecraft hosts.
+  https Microsoft, Xbox and Minecraft hosts. The page can't choose what runs: a Java is set only
+  through the native file picker, and JVM options that run or load code (`-XX:OnError`,
+  `-javaagent`, `-cp`, argument files, `-Dfabric.addMods` and the like) are saved only after the
+  player confirms them in a native dialog. A crash file is opened only if it's the shown crash's
+  own report or JVM log.
+- Quitting while the game runs asks first (macOS Cmd+Q); starting Wave Client again, or the
+  Dock icon, brings the window back.
 - Tokens: never sent to the renderer, never logged (redacted from game output and errors),
   stored only through the OS keychain.
 
@@ -277,6 +286,9 @@ initializes.
   `client/` on first run and after updates.
 - Built by GitHub Actions on a Windows runner and attached as a workflow artifact (and to
   releases on tags).
+- Electron fuses flipped at packaging: `RunAsNode`, `EnableNodeOptionsEnvironmentVariable`,
+  `EnableNodeCliInspectArguments` and `GrantFileProtocolExtraPrivileges` off, asar integrity
+  validation and `OnlyLoadAppFromAsar` on.
 - Unsigned until a code-signing certificate is added, so Windows SmartScreen will warn on
   first run.
 

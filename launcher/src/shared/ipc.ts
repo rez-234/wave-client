@@ -176,8 +176,13 @@ export interface WaveApi {
   }
   settings: {
     get(): Promise<LauncherSettings>
+    /**
+     * Saves changes and returns the settings as saved. javaPath can only be reset to null here
+     * (pickJava sets it). JVM options that run code need the player's OK in a native dialog;
+     * declining rejects the call.
+     */
     set(settings: Partial<LauncherSettings>): Promise<LauncherSettings>
-    /** Shows a file picker for a Java executable and returns the chosen path (checked), or null. */
+    /** Shows a file picker for a Java executable, checks it, saves it as javaPath and returns it; null if cancelled. */
     pickJava(): Promise<{ path: string; version: string } | null>
     /** Checks the saved Java again (it may have been updated or removed); null when the bundled Java is used. */
     javaInfo(): Promise<JavaStatus | null>
