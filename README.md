@@ -41,7 +41,7 @@ Fabric API and Wave Client, and starts the game. Nothing from Minecraft is bundl
 libraries, assets and Mojang's Java runtime are downloaded from Mojang's servers (and Fabric's
 from Fabric's) when you first press Play, checked against their published SHA-1 hashes, and
 shared by every profile. Later launches only re-check sizes; **Repair game files** re-hashes
-everything.
+everything. Once installed, the game also starts without an internet connection.
 
 Requirements: Node.js 22.12 or newer.
 
@@ -53,6 +53,21 @@ npm test             # unit tests
 npm run typecheck
 npm run build        # production build into launcher/out/
 ```
+
+Two heavier checks, both run by CI (`.github/workflows/launcher.yml`):
+
+```sh
+# Starts the built app, checks the window, the preload bridge and the API, and exits (0 = OK).
+WAVE_SMOKE_TEST=1 WAVE_LAUNCHER_HOME=/tmp/wave-smoke npm run smoke
+
+# Installs 1.21.11, Fabric, Java and assets from the official servers into a temporary folder,
+# checks an installed game also prepares offline, then starts Minecraft until Wave Client has
+# loaded. Needs the mod jar and a display (on a Linux server: xvfb-run -a npm run test:e2e).
+WAVE_MOD_JAR=../mod/build/libs/waveclient-<version>.jar npm run test:e2e
+```
+
+On Windows PowerShell, set the variables first, e.g. `$env:WAVE_SMOKE_TEST=1`. Electron
+downloads its own binary the first time it runs (or with `npx install-electron`).
 
 Data lives in `%APPDATA%\WaveClient` on Windows (`~/Library/Application Support/WaveClient` on
 macOS, `~/.config/WaveClient` on Linux):
@@ -92,7 +107,8 @@ instead** shows a code to enter at microsoft.com/link.
 Tokens are encrypted with the OS keychain (Windows DPAPI, macOS Keychain, Linux libsecret or
 KWallet) before they are written. On a Linux system without a keychain, accounts are kept for
 the session only. The Minecraft token is refreshed before a launch when less than 12 hours of
-it are left, so it lasts the whole play session.
+it are left, so it lasts the whole play session; when you're offline, a token that is still
+valid is used.
 
 ## Modules
 
