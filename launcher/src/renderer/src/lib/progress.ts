@@ -72,3 +72,27 @@ export function taskTitle(state: GameState): string {
       return 'Getting ready…'
   }
 }
+
+/**
+ * What a screen reader hears when the game's phase or task changes. Percentages are left out so
+ * it isn't read on every update, and crashes and failures are announced by their alert instead.
+ */
+export function phaseAnnouncement(state: GameState, launching: boolean): string {
+  switch (state.phase) {
+    case 'preparing':
+    case 'downloading':
+      return taskTitle(state)
+    case 'starting':
+      return 'Starting Minecraft'
+    case 'running':
+      return 'Minecraft is running'
+    case 'exited':
+      return state.exitCode === 0 || state.exitCode === undefined
+        ? 'Minecraft closed. The last session ended normally.'
+        : 'Minecraft was closed from the launcher.'
+    case 'idle':
+      return launching ? 'Getting ready…' : ''
+    default:
+      return ''
+  }
+}

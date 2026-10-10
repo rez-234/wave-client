@@ -21,6 +21,7 @@ export default defineConfig({
   renderer: {
     resolve: { alias: { ...shared, '@renderer': resolve('src/renderer/src') } },
     plugins: [react()],
+    build: { minify: true },
     // The design tokens live in the repository's shared/ folder, next to the mod.
     server: { fs: { allow: [resolve('..')] } }
   }

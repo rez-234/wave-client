@@ -1,13 +1,29 @@
+import '@fontsource/inter/400.css'
+import '@fontsource/inter/500.css'
+import '@fontsource/inter/600.css'
+import './styles.css'
+
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
-// Placeholder until the full UI lands.
-function App(): React.JSX.Element {
-  return <main style={{ fontFamily: 'system-ui', color: '#E6E6E8', background: '#0F1012', height: '100vh', display: 'grid', placeItems: 'center' }}>Wave Client</main>
+import tokens from '../../../../shared/design-tokens.json'
+import { App } from './App'
+import { ErrorBoundary } from './components/ErrorBoundary'
+import { cssVariables } from './lib/tokens'
+
+// The design tokens shared with the mod become CSS custom properties before anything renders.
+for (const [name, value] of Object.entries(cssVariables(tokens))) {
+  document.documentElement.style.setProperty(name, value)
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-)
+const root = document.getElementById('root')
+
+if (root) {
+  createRoot(root).render(
+    <StrictMode>
+      <ErrorBoundary scope="app">
+        <App />
+      </ErrorBoundary>
+    </StrictMode>
+  )
+}
