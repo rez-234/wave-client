@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -85,11 +85,43 @@ describe('AccountStore', () => {
     await expect(store.select('nope')).rejects.toThrow()
   })
 
-  it('ignores a file it cannot decrypt or that is malformed', async () => {
+  it('saves overlapping changes one after another, ending with the latest', async () => {
+    const store = new AccountStore(file, box())
+    await store.load()
+    await store.upsert(account('a', 'Alex'))
+    let changes = 0
+    store.onChange = () => changes++
+
+    for (let round = 0; round < 50; round++) {
+      // A refresh, a new sign-in and a selection at the same moment: none may fail.
+      await Promise.all([
+        store.update('a'.repeat(32), { msRefreshToken: `rotated-${round}` }),
+        store.upsert(account('b', 'Steve', { mcAccessToken: `access-${round}` })),
+        store.select('a'.repeat(32))
+      ])
+    }
+
+    expect(changes).toBe(150)
+    const reloaded = new AccountStore(file, box())
+    await reloaded.load()
+    expect(reloaded.get('a'.repeat(32))?.msRefreshToken).toBe('rotated-49')
+    expect(reloaded.get('b'.repeat(32))?.mcAccessToken).toBe('access-49')
+    expect(reloaded.selected()?.name).toBe('Alex')
+    expect(await readdir(dir)).toEqual(['accounts.dat'])
+  })
+
+  it('sets aside a file it cannot decrypt instead of overwriting it later', async () => {
     await writeFile(file, 'garbage')
     const store = new AccountStore(file, { ...box(), decrypt: () => { throw new Error('wrong key') } })
     await store.load()
     expect(store.list()).toEqual([])
+    const names = await readdir(dir)
+    expect(names).toHaveLength(1)
+    expect(names[0]).toMatch(/^accounts\.dat\.unreadable-\d+$/)
+    expect(await readFile(join(dir, names[0]!), 'utf8')).toBe('garbage')
+  })
+
+  it('ignores a malformed file', async () => {
 
     await writeFile(file, box().encrypt(JSON.stringify({ version: 1, selected: null, accounts: [{ id: '../x', name: 1 }] })))
     const malformed = new AccountStore(file, box())

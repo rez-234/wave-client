@@ -3,7 +3,7 @@ import { basename, join } from 'node:path'
 
 import { sha1File, type DownloadOptions, type DownloadQueue } from '../net/downloads'
 import type { HttpClient } from '../net/http'
-import { fabricApiUrl, fetchMavenSha1 } from './fabric'
+import { fabricApiPath, fabricApiUrl, mavenSha1 } from './fabric'
 
 /**
  * The launcher-owned folder passed to Fabric as -Dfabric.addMods: exactly our mod and the pinned
@@ -13,6 +13,7 @@ export async function prepareClientMods(
   http: HttpClient,
   queue: DownloadQueue,
   clientDir: string,
+  librariesDir: string,
   fabricApiVersion: string,
   bundledModJar: string,
   options: DownloadOptions = {}
@@ -26,7 +27,7 @@ export async function prepareClientMods(
     throw new Error(`Unexpected mod jar name: ${modFile}`)
   }
 
-  const apiSha1 = await fetchMavenSha1(http, apiUrl, options.signal)
+  const apiSha1 = await mavenSha1(http, librariesDir, fabricApiPath(fabricApiVersion), apiUrl, options.signal)
   await queue.run([{ url: apiUrl, path: join(clientDir, apiFile), sha1: apiSha1 }], options)
   await copyIfChanged(bundledModJar, join(clientDir, modFile))
 

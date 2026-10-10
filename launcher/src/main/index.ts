@@ -120,7 +120,7 @@ async function start(): Promise<void> {
     log
   })
 
-  registerIpc({
+  const { emitAccounts } = registerIpc({
     window: () => mainWindow,
     isTrustedUrl,
     info: () => ({ ...info, secureStorage: accounts.persistent }),
@@ -131,6 +131,8 @@ async function start(): Promise<void> {
     game,
     log
   })
+  // Refreshes can mark an account as needing sign-in or rename it; the window hears about every change.
+  accounts.onChange = emitAccounts
 
   log(`Wave Client ${app.getVersion()} starting; data in ${root}; sign-in ${clientId ? 'configured' : 'not configured'}; secure storage ${accounts.persistent ? 'on' : 'off'}`)
   createWindow()

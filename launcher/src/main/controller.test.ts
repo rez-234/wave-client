@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { DEFAULT_SETTINGS, type GameState, type LogLine } from '@shared/ipc'
+import { DEFAULT_SETTINGS, type GameState, type LogLine, type TaskProgress } from '@shared/ipc'
 
 import { AccountStore, type StoredAccount } from './accounts/store'
 import { AuthError } from './auth/errors'
@@ -13,7 +13,7 @@ import { GameController, logText, userMessage } from './controller'
 import { prepareGame, type PreparedGame } from './game/install'
 import type { GameSession } from './game/process'
 import { DownloadError, HashMismatchError } from './net/downloads'
-import { HttpClient, HttpError } from './net/http'
+import { HttpClient, HttpError, NetworkError } from './net/http'
 import { DownloadQueue } from './net/downloads'
 import { launcherPaths } from './paths'
 import { SettingsStore } from './settings'
@@ -148,6 +148,25 @@ describe('GameController', () => {
     expect(ctl.crashFile('report')).toBeNull()
   })
 
+  it('ignores progress that arrives after a cancel, so Play works again', async () => {
+    await accounts.upsert(ACCOUNT)
+    const ctl = controller()
+    let late: ((task: TaskProgress) => void) | undefined
+    vi.mocked(prepareGame).mockImplementationOnce((_context, options) => new Promise((_resolve, reject) => {
+      late = options.onTask
+      options.signal?.addEventListener('abort', () => reject(new Error('aborted')))
+      setTimeout(() => ctl.cancel(), 1)
+    }))
+    await ctl.launch()
+
+    // A download worker that was hashing a file reports after the cancel went through.
+    late?.({ label: 'Downloading Java', doneFiles: 1, totalFiles: 2, doneBytes: 1, totalBytes: 2 })
+    expect(ctl.getState()).toEqual({ phase: 'idle' })
+    vi.mocked(prepareGame).mockResolvedValue(PREPARED)
+    await ctl.launch()
+    expect(ctl.getState().phase).toBe('running')
+  })
+
   it('goes back to idle when cancelled', async () => {
     await accounts.upsert(ACCOUNT)
     const ctl = controller()
@@ -163,10 +182,11 @@ describe('GameController', () => {
 describe('userMessage', () => {
   it('explains downloads, servers, the network and the disk', () => {
     const item = { url: 'https://x/a', path: '/a' }
-    expect(userMessage(new DownloadError([{ item, error: new TypeError('fetch failed') }]))).toMatch(/Couldn't download 1 game file/)
+    expect(userMessage(new DownloadError([{ item, error: new NetworkError('x', 'https://x/a', false) }]))).toMatch(/Couldn't download 1 game file/)
+    expect(userMessage(new DownloadError([{ item, error: Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC' }) }]))).toMatch(/disk is full/)
     expect(userMessage(new DownloadError([{ item, error: new HashMismatchError('u', 'a', 'b') }]))).toMatch(/checksum/)
     expect(userMessage(new HttpError(503, 'https://x', ''))).toMatch(/aren't responding/)
-    expect(userMessage(new TypeError('fetch failed'))).toMatch(/internet connection/)
+    expect(userMessage(new NetworkError("Couldn't reach https://x: net::ERR_INTERNET_DISCONNECTED", 'https://x', false))).toMatch(/internet connection/)
     expect(userMessage(new Error('ENOSPC: no space left on device'))).toMatch(/disk is full/)
     expect(userMessage(new Error("Minecraft 1.21.11 doesn't support Linux on arm64."))).toBe("Minecraft 1.21.11 doesn't support Linux on arm64.")
     expect(userMessage({})).toMatch(/Something went wrong/)

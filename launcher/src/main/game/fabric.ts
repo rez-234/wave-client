@@ -1,8 +1,9 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
 
 import type { HttpClient } from '../net/http'
-import { versionFiles, type LauncherPaths } from '../paths'
-import { mavenUrl, parseMaven } from '../util/maven'
+import { inside, versionFiles, type LauncherPaths } from '../paths'
+import { mavenPath, mavenUrl, parseMaven } from '../util/maven'
 import type { ResolvedLibrary, VersionJson } from './version'
 
 export const FABRIC_META = 'https://meta.fabricmc.net/v2'
@@ -66,34 +67,60 @@ function checkProfile(profile: VersionJson, id: string, gameVersion: string): Ve
  * intermediary) get it from the ".sha1" file next to the jar in the Maven repository, so nothing
  * is downloaded unverified.
  */
-export async function fillMissingHashes(http: HttpClient, libraries: ResolvedLibrary[], signal?: AbortSignal): Promise<ResolvedLibrary[]> {
+export async function fillMissingHashes(http: HttpClient, librariesDir: string, libraries: ResolvedLibrary[], signal?: AbortSignal): Promise<ResolvedLibrary[]> {
   return Promise.all(
     libraries.map(async (library) => {
       if (library.sha1) {
         return library
       }
 
-      return { ...library, sha1: await fetchMavenSha1(http, library.url, signal) }
+      return { ...library, sha1: await mavenSha1(http, librariesDir, library.path, library.url, signal) }
     })
   )
 }
 
-export async function fetchMavenSha1(http: HttpClient, artifactUrl: string, signal?: AbortSignal): Promise<string> {
+const SHA1 = /^\s*([0-9a-fA-F]{40})\b/
+
+/**
+ * A Maven artifact's published SHA-1. It is saved next to where the artifact goes in the
+ * libraries folder (as <file>.sha1, like Maven itself) and used from there afterwards: a released
+ * artifact never changes, and an installed game then starts without Fabric's Maven.
+ */
+export async function mavenSha1(http: HttpClient, librariesDir: string, relativePath: string, artifactUrl: string, signal?: AbortSignal): Promise<string> {
   if (!artifactUrl.startsWith('https://')) {
     throw new Error(`Refusing to verify ${artifactUrl}: not HTTPS`)
   }
 
+  const saved = inside(librariesDir, `${relativePath}.sha1`)
+  const known = SHA1.exec(await readFile(saved, 'utf8').catch(() => ''))
+
+  if (known) {
+    return known[1]!.toLowerCase()
+  }
+
   const text = await (await http.get(`${artifactUrl}.sha1`, { signal })).text()
-  const match = /^\s*([0-9a-fA-F]{40})\b/.exec(text)
+  const match = SHA1.exec(text)
 
   if (!match) {
     throw new Error(`No SHA-1 published for ${artifactUrl}`)
   }
 
-  return match[1]!.toLowerCase()
+  const sha1 = match[1]!.toLowerCase()
+  await mkdir(dirname(saved), { recursive: true })
+  await writeFile(saved, `${sha1}\n`)
+  return sha1
 }
 
 /** The pinned Fabric API jar from Fabric's Maven. */
 export function fabricApiUrl(version: string): string {
-  return mavenUrl(FABRIC_MAVEN, parseMaven(`net.fabricmc.fabric-api:fabric-api:${version}`))
+  return mavenUrl(FABRIC_MAVEN, fabricApi(version))
+}
+
+/** Where the Fabric API jar would live in a Maven layout (its saved SHA-1 goes there). */
+export function fabricApiPath(version: string): string {
+  return mavenPath(fabricApi(version))
+}
+
+function fabricApi(version: string) {
+  return parseMaven(`net.fabricmc.fabric-api:fabric-api:${version}`)
 }

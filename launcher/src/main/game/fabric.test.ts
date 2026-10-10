@@ -56,17 +56,23 @@ describe('Fabric', () => {
     await expect(loadFabricProfile(server({ [PROFILE_URL]: JSON.stringify(http) }).http, paths, '1.21.11', '0.19.4')).rejects.toThrow(/HTTPS/)
   })
 
-  it('fetches Maven .sha1 files for libraries Fabric leaves unhashed', async () => {
+  it('fetches Maven .sha1 files for libraries Fabric leaves unhashed, and keeps them', async () => {
     const libraries = resolveLibraries(JSON.parse(profileText).libraries, { os: 'linux', arch: 'x64', osVersion: '', features: {} })
     const unhashed = libraries.filter((l) => !l.sha1)
     expect(unhashed.map((l) => l.coordinate.artifact).sort()).toEqual(['fabric-loader', 'intermediary'])
 
     const hashes = Object.fromEntries(unhashed.map((l) => [`${l.url}.sha1`, `${sha1(l.name)}  ${l.path}\n`]))
-    const filled = await fillMissingHashes(server(hashes).http, libraries)
+    const libs = join(dir, 'libraries')
+    const filled = await fillMissingHashes(server(hashes).http, libs, libraries)
     expect(filled.every((l) => /^[0-9a-f]{40}$/.test(l.sha1!))).toBe(true)
 
-    await expect(fillMissingHashes(server({}).http, libraries)).rejects.toThrow()
-    await expect(fillMissingHashes(server(Object.fromEntries(Object.keys(hashes).map((k) => [k, 'not a hash']))).http, libraries)).rejects.toThrow(/No SHA-1/)
+    // Saved next to the jars: Maven can be unreachable from now on.
+    const offline = server({})
+    expect(await fillMissingHashes(offline.http, libs, libraries)).toEqual(filled)
+    expect(offline.calls).toHaveLength(0)
+
+    await expect(fillMissingHashes(server({}).http, join(dir, 'empty'), libraries)).rejects.toThrow()
+    await expect(fillMissingHashes(server(Object.fromEntries(Object.keys(hashes).map((k) => [k, 'not a hash']))).http, join(dir, 'empty'), libraries)).rejects.toThrow(/No SHA-1/)
   })
 
   it('keeps exactly our mod and the pinned Fabric API in the client folder', async () => {
@@ -76,11 +82,11 @@ describe('Fabric', () => {
     const clientDir = join(dir, 'client')
     const modJar = join(dir, 'waveclient-0.4.0.jar')
     await writeFile(modJar, 'mod-v1')
-    await prepareClientMods(http, queue, join(dir, 'client'), '0.141.6+1.21.11', modJar)
+    await prepareClientMods(http, queue, join(dir, 'client'), join(dir, 'libraries'), '0.141.6+1.21.11', modJar)
     await writeFile(join(clientDir, 'fabric-api-0.100.0+1.21.jar'), 'stale')
 
     await writeFile(modJar, 'mod-v2')
-    const files = await prepareClientMods(http, queue, clientDir, '0.141.6+1.21.11', modJar)
+    const files = await prepareClientMods(http, queue, clientDir, join(dir, 'libraries'), '0.141.6+1.21.11', modJar)
 
     expect((await readdir(clientDir)).sort()).toEqual(['fabric-api-0.141.6+1.21.11.jar', 'waveclient-0.4.0.jar'])
     expect(files).toHaveLength(2)
@@ -92,6 +98,6 @@ describe('Fabric', () => {
     const { http } = server({ [fabricApiUrl('0.141.6+1.21.11')]: 'tampered', [`${fabricApiUrl('0.141.6+1.21.11')}.sha1`]: sha1('real') })
     const modJar = join(dir, 'waveclient-0.4.0.jar')
     await writeFile(modJar, 'mod')
-    await expect(prepareClientMods(http, new DownloadQueue({ http, retries: 0 }), join(dir, 'client'), '0.141.6+1.21.11', modJar)).rejects.toThrow(/SHA-1/)
+    await expect(prepareClientMods(http, new DownloadQueue({ http, retries: 0 }), join(dir, 'client'), join(dir, 'libraries'), '0.141.6+1.21.11', modJar)).rejects.toThrow(/SHA-1/)
   })
 })

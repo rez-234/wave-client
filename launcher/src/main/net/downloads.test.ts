@@ -1,12 +1,31 @@
 import { createHash } from 'node:crypto'
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DownloadError, DownloadQueue, type DownloadProgress } from './downloads'
-import { HttpClient, HttpError, type FetchFn } from './http'
+import { HttpClient, HttpError, NetworkError, type FetchFn } from './http'
+
+/** When set, writing a downloaded file fails as if the disk were full. */
+let diskFull = false
+
+vi.mock('node:fs', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs')>()
+  return {
+    ...fs,
+    createWriteStream: (...args: Parameters<typeof fs.createWriteStream>) => {
+      const stream = fs.createWriteStream(...args)
+
+      if (diskFull) {
+        stream.destroy(Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC' }))
+      }
+
+      return stream
+    }
+  }
+})
 
 const sha1 = (text: string): string => createHash('sha1').update(text).digest('hex')
 
@@ -38,6 +57,34 @@ function fakeFetch(files: Record<string, string>, failures: Record<string, (numb
   return { fetch, calls }
 }
 
+/** A body that sends `chunks` pieces, `everyMs` apart, and stops when the request is aborted. */
+function trickle(chunks: number, everyMs: number, signal?: AbortSignal | null): ReadableStream<Uint8Array> {
+  let timer: NodeJS.Timeout | undefined
+  return new ReadableStream({
+    start(controller) {
+      let sent = 0
+      signal?.addEventListener('abort', () => {
+        clearTimeout(timer)
+        controller.error(signal.reason)
+      })
+      const tick = (): void => {
+        if (sent === chunks) {
+          controller.close()
+          return
+        }
+
+        sent++
+        controller.enqueue(new TextEncoder().encode('x'))
+        timer = setTimeout(tick, everyMs)
+      }
+      timer = setTimeout(tick, everyMs)
+    },
+    cancel() {
+      clearTimeout(timer)
+    }
+  })
+}
+
 function client(fetch: FetchFn): HttpClient {
   return new HttpClient({ fetch, userAgent: 'test', backoffMs: () => 0, sleep: async () => {} })
 }
@@ -59,6 +106,41 @@ describe('HttpClient', () => {
     const { fetch, calls } = fakeFetch({}, { 'https://x/post': [503] })
     await expect(client(fetch).postJson('https://x/post', {})).rejects.toMatchObject({ status: 503 })
     expect(calls).toHaveLength(1)
+  })
+
+  it("turns any transport failure into a NetworkError, Electron's net::ERR_ errors included", async () => {
+    const calls: string[] = []
+    const fetch: FetchFn = async (url) => {
+      calls.push(url)
+      throw new Error('net::ERR_INTERNET_DISCONNECTED')
+    }
+    const error = await client(fetch).getJson('https://x/a').catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(NetworkError)
+    expect((error as NetworkError).message).toMatch(/ERR_INTERNET_DISCONNECTED/)
+    expect(calls).toHaveLength(4)
+  })
+
+  it('passes a cancel through as it is', async () => {
+    const controller = new AbortController()
+    const fetch: FetchFn = (_url, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal!.reason)))
+    const pending = client(fetch).getJson('https://x/a', { signal: controller.signal }).catch((e: unknown) => e)
+    controller.abort()
+    expect(await pending).toMatchObject({ name: 'AbortError' })
+  })
+
+  it('gives up waiting for an answer, but not on a download that keeps arriving', async () => {
+    const silent: FetchFn = (_url, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('net::ERR_ABORTED'))))
+    await expect(client(silent).get('https://x/a', { timeoutMs: 30, retries: 0 })).rejects.toMatchObject({ name: 'NetworkError', timedOut: true })
+
+    // 6 pieces 20 ms apart: longer than the 30 ms deadline in total, but never silent for that long.
+    const slow: FetchFn = async (_url, init) => new Response(trickle(6, 20, init?.signal))
+    const response = await client(slow).get('https://x/a', { timeoutMs: 30, retries: 0 })
+    expect(await response.text()).toBe('xxxxxx')
+  })
+
+  it('still limits a JSON body that stops arriving', async () => {
+    const stuck: FetchFn = async (_url, init) => new Response(trickle(1_000, 10_000, init?.signal))
+    await expect(client(stuck).getJson('https://x/a', { timeoutMs: 30, retries: 0 })).rejects.toMatchObject({ name: 'NetworkError', timedOut: true })
   })
 
   it('keeps query strings out of error messages', async () => {
@@ -160,6 +242,81 @@ describe('DownloadQueue', () => {
     const { fetch } = fakeFetch({ 'https://x/java': 'bin' })
     await new DownloadQueue({ http: client(fetch) }).run([item('java', 'bin', { executable: true })])
     expect((await stat(join(dir, 'sub', 'java'))).mode & 0o111).not.toBe(0)
+  })
+
+  it('drops a download that stops sending data, and tries again', async () => {
+    let calls = 0
+    const fetch: FetchFn = async (_url, init) => {
+      calls++
+      // The first attempt sends one byte and then nothing.
+      return new Response(calls === 1 ? trickle(1_000, 10_000, init?.signal) : 'alpha')
+    }
+    await new DownloadQueue({ http: client(fetch), backoffMs: () => 0, stallTimeoutMs: 50 }).run([item('a', 'alpha')])
+    expect(calls).toBe(2)
+    expect(await readFile(join(dir, 'sub', 'a'), 'utf8')).toBe('alpha')
+  })
+
+  it('does not retry a full disk', async () => {
+    const { fetch, calls } = fakeFetch({ 'https://x/a': 'alpha' })
+    diskFull = true
+
+    try {
+      const error = await new DownloadQueue({ http: client(fetch), backoffMs: () => 0 }).run([item('a', 'alpha')]).catch((e: unknown) => e)
+      expect(error).toBeInstanceOf(DownloadError)
+      expect((error as DownloadError).failures[0]?.error).toMatchObject({ code: 'ENOSPC' })
+      expect(calls).toHaveLength(1)
+    } finally {
+      diskFull = false
+    }
+  })
+
+  it('makes an installed executable executable again', async () => {
+    if (process.platform === 'win32') {
+      return
+    }
+
+    const { fetch, calls } = fakeFetch({ 'https://x/java': 'bin' })
+    const queue = new DownloadQueue({ http: client(fetch) })
+    await queue.run([item('java', 'bin', { executable: true })])
+    await chmod(join(dir, 'sub', 'java'), 0o644)
+    await queue.run([item('java', 'bin', { executable: true })])
+    expect((await stat(join(dir, 'sub', 'java'))).mode & 0o111).not.toBe(0)
+    expect(calls).toHaveLength(1)
+  })
+
+  it('counts files without a known size in the total as they arrive', async () => {
+    const { fetch } = fakeFetch({ 'https://x/a': 'alpha', 'https://x/b': 'bravo!' })
+    const reports: DownloadProgress[] = []
+    await new DownloadQueue({ http: client(fetch), progressIntervalMs: 0 }).run([item('a', 'alpha'), item('b', 'bravo!', { size: undefined })], {
+      onProgress: (p) => reports.push(p)
+    })
+    expect(reports.every((p) => p.doneBytes <= p.totalBytes)).toBe(true)
+    expect(reports.at(-1)).toMatchObject({ totalBytes: 11, doneBytes: 11 })
+  })
+
+  it('reports nothing after a cancel, and returns only when every file is left alone', async () => {
+    const controller = new AbortController()
+    const reports: DownloadProgress[] = []
+    let open = 0
+    const fetch: FetchFn = async (url, init) => {
+      open++
+      init?.signal?.addEventListener('abort', () => setTimeout(() => open--, 20))
+      // "a" is cancelled at once; "b" is still streaming when that happens.
+      if (url.endsWith('/a')) {
+        setTimeout(() => controller.abort(), 5)
+      }
+
+      return new Response(trickle(1_000, 1, init?.signal))
+    }
+    const run = new DownloadQueue({ http: client(fetch), progressIntervalMs: 0 }).run([item('a', 'a'.repeat(1000)), item('b', 'b'.repeat(1000))], {
+      signal: controller.signal,
+      onProgress: (p) => reports.push(p)
+    })
+    await expect(run).rejects.toThrow()
+    const count = reports.length
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(reports.length).toBe(count)
+    expect(await readdir(join(dir, 'sub')).catch(() => [])).toEqual([])
   })
 
   it('stops when cancelled', async () => {

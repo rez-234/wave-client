@@ -1,5 +1,6 @@
 import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 
 import type { AccountView } from '@shared/ipc'
 
@@ -45,6 +46,10 @@ const EMPTY: AccountFile = { version: 1, selected: null, accounts: [] }
 export class AccountStore {
   private data: AccountFile = structuredClone(EMPTY)
   private loaded = false
+  /** Saves run one at a time; each writes the accounts as they are when it starts. */
+  private writing: Promise<void> = Promise.resolve()
+  /** Called after every change (sign-in, refresh, selection, sign-out), so the window can show it. */
+  onChange: (() => void) | null = null
 
   constructor(
     private readonly file: string,
@@ -79,8 +84,12 @@ export class AccountStore {
         this.data = { version: 1, selected: parsed.selected ?? null, accounts: parsed.accounts.filter(isAccount) }
       }
     } catch (error) {
-      // Encrypted under a different OS user or keychain: unreadable, so start over.
-      this.log(`Saved accounts could not be decrypted and were ignored: ${error instanceof Error ? error.message : String(error)}`)
+      // Encrypted under a different OS user or keychain, or the keychain refused this time. Start
+      // over, but keep the file: the next save would otherwise destroy accounts that a later
+      // start might still read.
+      const kept = `${this.file}.unreadable-${Date.now()}`
+      await rename(this.file, kept).catch(() => {})
+      this.log(`Saved accounts could not be decrypted and were set aside as ${kept}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
@@ -161,7 +170,18 @@ export class AccountStore {
     await this.save()
   }
 
-  private async save(): Promise<void> {
+  private save(): Promise<void> {
+    this.onChange?.()
+    const run = this.writing.then(
+      () => this.write(),
+      () => this.write()
+    )
+    this.writing = run.catch(() => {})
+    return run
+  }
+
+  /** Writes the accounts as they are now: to a temporary file, then renamed over the old one. */
+  private async write(): Promise<void> {
     if (!this.secrets.available()) {
       return
     }
@@ -174,18 +194,42 @@ export class AccountStore {
     const encrypted = this.secrets.encrypt(JSON.stringify(this.data))
     const temp = `${this.file}.tmp`
     await mkdir(dirname(this.file), { recursive: true })
-    await writeFile(temp, encrypted, { mode: 0o600 })
 
-    if (process.platform !== 'win32') {
-      await chmod(temp, 0o600)
+    try {
+      await writeFile(temp, encrypted, { mode: 0o600, flush: true })
+
+      if (process.platform !== 'win32') {
+        await chmod(temp, 0o600)
+      }
+
+      await renameWithRetry(temp, this.file)
+    } catch (error) {
+      await rm(temp, { force: true }).catch(() => {})
+      throw error
     }
-
-    await rename(temp, this.file)
   }
 
   private assertLoaded(): void {
     if (!this.loaded) {
       throw new Error('AccountStore.load() must be called first')
+    }
+  }
+}
+
+/** Windows refuses to replace a file that an antivirus scanner or indexer has open for a moment. */
+async function renameWithRetry(from: string, to: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rename(from, to)
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+
+      if (process.platform !== 'win32' || attempt >= 4 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) {
+        throw error
+      }
+
+      await delay(50 * 2 ** attempt)
     }
   }
 }

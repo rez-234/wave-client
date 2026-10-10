@@ -36,6 +36,19 @@ export class AuthService {
 
   /** Interactive sign-in. Adds (or updates) the account and selects it. */
   async signIn(method: SignInMethod, onEvent: (event: SignInEvent) => void, signal?: AbortSignal): Promise<StoredAccount> {
+    try {
+      return await this.interactive(method, onEvent, signal)
+    } catch (error) {
+      // Whatever a cancel interrupted, it is reported as a cancel, not as the failure it caused.
+      if (signal?.aborted) {
+        throw new AuthError('cancelled', 'Sign-in was cancelled.')
+      }
+
+      throw error
+    }
+  }
+
+  private async interactive(method: SignInMethod, onEvent: (event: SignInEvent) => void, signal?: AbortSignal): Promise<StoredAccount> {
     const clientId = this.requireClientId()
     onEvent({ kind: 'progress', step: 'microsoft' })
 
@@ -56,6 +69,7 @@ export class AuthService {
           })
 
     const account = await this.completeChain(tokens, clientId, onEvent, signal)
+    signal?.throwIfAborted()
     await this.config.store.upsert(account)
     this.config.log?.(`Signed in as ${account.name}`)
     return account

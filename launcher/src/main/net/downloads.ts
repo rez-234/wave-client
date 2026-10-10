@@ -6,7 +6,7 @@ import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { ReadableStream as WebReadableStream } from 'node:stream/web'
 
-import { HttpClient, HttpError, abortableSleep, redactUrl } from './http'
+import { HttpClient, HttpError, NetworkError, abortableSleep, redactUrl } from './http'
 
 /** One file to fetch. */
 export interface DownloadItem {
@@ -23,7 +23,7 @@ export interface DownloadItem {
 export interface DownloadProgress {
   totalFiles: number
   doneFiles: number
-  /** Sum of known sizes; files without a size count once they finish. */
+  /** Sum of known sizes, plus the bytes of files without a size as they arrive. */
   totalBytes: number
   doneBytes: number
 }
@@ -75,6 +75,8 @@ export interface DownloadQueueConfig {
   retries?: number
   backoffMs?: (attempt: number) => number
   progressIntervalMs?: number
+  /** A download that receives nothing for this long is dropped and tried again. */
+  stallTimeoutMs?: number
 }
 
 /**
@@ -88,6 +90,7 @@ export class DownloadQueue {
   private readonly retries: number
   private readonly backoffMs: (attempt: number) => number
   private readonly progressIntervalMs: number
+  private readonly stallTimeoutMs: number
 
   constructor(config: DownloadQueueConfig) {
     this.http = config.http
@@ -95,6 +98,7 @@ export class DownloadQueue {
     this.retries = Math.max(0, config.retries ?? 3)
     this.backoffMs = config.backoffMs ?? ((attempt) => Math.min(10_000, 1000 * 2 ** attempt))
     this.progressIntervalMs = config.progressIntervalMs ?? 100
+    this.stallTimeoutMs = config.stallTimeoutMs ?? 30_000
   }
 
   async run(items: DownloadItem[], options: DownloadOptions = {}): Promise<void> {
@@ -109,7 +113,8 @@ export class DownloadQueue {
     const report = (force = false): void => {
       const now = Date.now()
 
-      if (options.onProgress && (force || now - lastReport >= this.progressIntervalMs)) {
+      // Nothing after a cancel: the caller has moved on.
+      if (options.onProgress && !options.signal?.aborted && (force || now - lastReport >= this.progressIntervalMs)) {
         lastReport = now
         options.onProgress({ ...progress })
       }
@@ -125,6 +130,11 @@ export class DownloadQueue {
         try {
           await this.fetchOne(item, options, (bytes) => {
             progress.doneBytes += bytes
+
+            if (item.size === undefined) {
+              progress.totalBytes += bytes
+            }
+
             report()
           })
         } catch (error) {
@@ -141,7 +151,16 @@ export class DownloadQueue {
     }
 
     report(true)
-    await Promise.all(Array.from({ length: Math.min(this.concurrency, unique.length) }, worker))
+    // Wait for every worker, even after one fails or a cancel, so nothing still touches files or
+    // reports progress once this returns.
+    const results = await Promise.allSettled(Array.from({ length: Math.min(this.concurrency, unique.length) }, worker))
+    options.signal?.throwIfAborted()
+    const crashed = results.find((result) => result.status === 'rejected')
+
+    if (crashed) {
+      throw crashed.reason
+    }
+
     report(true)
 
     if (failures.length > 0) {
@@ -152,6 +171,11 @@ export class DownloadQueue {
   /** Makes sure one file is present and valid, downloading it if needed. Reports bytes as they arrive. */
   private async fetchOne(item: DownloadItem, options: DownloadOptions, onBytes: (bytes: number) => void): Promise<void> {
     if (await isValid(item, options.verify ?? 'size')) {
+      // An executable can lose its mode (an interrupted install, a copied folder); it's cheap to set again.
+      if (item.executable && process.platform !== 'win32') {
+        await chmod(item.path, 0o755)
+      }
+
       onBytes(item.size ?? 0)
       return
     }
@@ -189,45 +213,61 @@ export class DownloadQueue {
   private async download(item: DownloadItem, signal: AbortSignal | undefined, onBytes: (bytes: number) => void): Promise<void> {
     const part = `${item.path}.part`
     await mkdir(dirname(item.path), { recursive: true })
-    // Retries are handled here per file, so the request itself isn't retried.
-    const response = await this.http.get(item.url, { signal, retries: 0, timeoutMs: 60_000 })
-
-    if (!response.body) {
-      throw new Error(`Empty response from ${redactUrl(item.url)}`)
-    }
-
-    const hash = createHash('sha1')
-    let size = 0
-    const meter = new Transform({
-      transform(chunk: Buffer, _encoding, callback) {
-        hash.update(chunk)
-        size += chunk.length
-        onBytes(chunk.length)
-        callback(null, chunk)
-      }
-    })
+    // No deadline for the whole file (a big one on a slow line takes minutes), but one that stops
+    // receiving data is dropped.
+    const stall = new AbortController()
+    const linked = signal ? AbortSignal.any([signal, stall.signal]) : stall.signal
+    const seconds = Math.round(this.stallTimeoutMs / 1000)
+    const watchdog = setTimeout(() => stall.abort(new NetworkError(`No data from ${redactUrl(item.url)} for ${seconds} seconds`, item.url, true)), this.stallTimeoutMs)
 
     try {
-      await pipeline(Readable.fromWeb(response.body as WebReadableStream<Uint8Array>), meter, createWriteStream(part), { signal })
+      // Retries are handled here per file, so the request itself isn't retried.
+      const response = await this.http.get(item.url, { signal: linked, retries: 0, timeoutMs: this.stallTimeoutMs })
 
-      if (item.size !== undefined && size !== item.size) {
-        throw new SizeMismatchError(item.url, item.size, size)
+      if (!response.body) {
+        throw new Error(`Empty response from ${redactUrl(item.url)}`)
       }
 
-      const actual = hash.digest('hex')
+      const hash = createHash('sha1')
+      let size = 0
+      const meter = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          watchdog.refresh()
+          hash.update(chunk)
+          size += chunk.length
+          onBytes(chunk.length)
+          callback(null, chunk)
+        }
+      })
 
-      if (item.sha1 && actual !== item.sha1.toLowerCase()) {
-        throw new HashMismatchError(item.url, item.sha1, actual)
+      try {
+        watchdog.refresh()
+        await pipeline(Readable.fromWeb(response.body as WebReadableStream<Uint8Array>), meter, createWriteStream(part), { signal: linked })
+
+        if (item.size !== undefined && size !== item.size) {
+          throw new SizeMismatchError(item.url, item.size, size)
+        }
+
+        const actual = hash.digest('hex')
+
+        if (item.sha1 && actual !== item.sha1.toLowerCase()) {
+          throw new HashMismatchError(item.url, item.sha1, actual)
+        }
+
+        // Executable before it gets its real name, so the final path is never left without the bit.
+        if (item.executable && process.platform !== 'win32') {
+          await chmod(part, 0o755)
+        }
+
+        await rename(part, item.path)
+      } catch (error) {
+        await rm(part, { force: true })
+        throw error
       }
-
-      await rename(part, item.path)
     } catch (error) {
-      await rm(part, { force: true })
-      throw error
-    }
-
-    if (item.executable && process.platform !== 'win32') {
-      await chmod(item.path, 0o755)
+      throw stall.signal.aborted && !signal?.aborted ? stall.signal.reason : error
+    } finally {
+      clearTimeout(watchdog)
     }
   }
 }
@@ -277,13 +317,37 @@ function dedupe(items: DownloadItem[]): DownloadItem[] {
   return [...byPath.values()]
 }
 
+/**
+ * A failure writing to this computer's disk rather than downloading: retrying won't help, and the
+ * player needs to hear about the disk, not the internet. EPERM, EBUSY and EACCES on Windows are
+ * usually an antivirus scanner holding the file for a moment, so they are retried there.
+ */
+export function localFileProblem(error: unknown): 'disk-full' | 'no-permission' | 'unwritable' | null {
+  const code = (error as NodeJS.ErrnoException | null)?.code
+
+  switch (code) {
+    case 'ENOSPC':
+    case 'EDQUOT':
+      return 'disk-full'
+    case 'EACCES':
+    case 'EPERM':
+      return process.platform === 'win32' ? null : 'no-permission'
+    case 'EROFS':
+    case 'ENOTDIR':
+    case 'EISDIR':
+      return 'unwritable'
+    default:
+      return null
+  }
+}
+
 function isRetryable(error: unknown): boolean {
   if (error instanceof HttpError) {
     return error.status === 408 || error.status === 429 || error.status >= 500
   }
 
-  // Bad hashes, truncated bodies and network errors are worth another try.
-  return true
+  // Bad hashes, truncated bodies and network errors are worth another try; a full disk isn't.
+  return localFileProblem(error) === null
 }
 
 function describe(error: unknown): string {

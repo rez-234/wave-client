@@ -158,6 +158,45 @@ describe('sign-in', () => {
     await expect(service.signIn('browser', () => {}, controller.signal)).rejects.toMatchObject({ code: 'cancelled' })
   })
 
+  it('reports a cancel during the Xbox steps as a cancel', async () => {
+    const controller = new AbortController()
+    const { http } = services({
+      [XBL_AUTHENTICATE]: (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(init.signal!.reason))
+          controller.abort()
+        })
+    })
+    const service = new AuthService({ http, store, clientId: CLIENT, openBrowser: browserReturning((authorize) => ({ code: 'c', state: authorize.searchParams.get('state')! })) })
+    await expect(service.signIn('browser', () => {}, controller.signal)).rejects.toMatchObject({ code: 'cancelled' })
+    expect(store.list()).toEqual([])
+  })
+
+  it('keeps polling the device code through network trouble', async () => {
+    const answers: Array<string | 'down' | 503 | null> = ['authorization_pending', 'down', 503, 'temporarily_unavailable', null]
+    const sleeps: number[] = []
+    const { http } = services({
+      [MS_DEVICE_CODE]: () => json({ device_code: 'dc', user_code: 'ABCD-1234', verification_uri: 'https://www.microsoft.com/link', expires_in: 900, interval: 5 }),
+      [MS_TOKEN]: () => {
+        const answer = answers.shift()
+
+        if (answer === 'down') {
+          throw new Error('net::ERR_NETWORK_CHANGED')
+        }
+
+        if (answer === 503) {
+          return new Response('', { status: 503 })
+        }
+
+        return answer ? json({ error: answer }, 400) : json({ access_token: 'ms-access', refresh_token: 'r', expires_in: 3600 })
+      }
+    })
+    const tokens = await signInWithDeviceCode(http, { clientId: CLIENT, onPrompt: () => {}, sleep: async (ms) => void sleeps.push(ms) })
+
+    expect(tokens.refreshToken).toBe('r')
+    expect(sleeps).toEqual([5000, 5000, 10000, 20000, 30000])
+  })
+
   it('polls the device code through pending and slow_down', async () => {
     const answers = ['authorization_pending', 'slow_down', null]
     const sleeps: number[] = []
@@ -292,8 +331,9 @@ describe('ensureFresh', () => {
   })
 
   it('keeps playing on a still-valid token when the network is down', async () => {
+    // How Electron's net.fetch fails: a plain Error, not a TypeError.
     const down: Handler = () => {
-      throw new TypeError('fetch failed')
+      throw new Error('net::ERR_INTERNET_DISCONNECTED')
     }
     const { http } = services({ [MS_TOKEN]: down })
     await store.upsert(saved(60 * 60_000))

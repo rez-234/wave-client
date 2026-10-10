@@ -9,7 +9,10 @@
 export type FetchFn = (input: string, init?: RequestInit) => Promise<Response>
 
 export interface HttpOptions {
-  /** Per-attempt timeout. */
+  /**
+   * Per attempt: how long to wait for the response (and, for JSON, its body). A streamed body
+   * from get() has no deadline; the caller watches it for stalls.
+   */
   timeoutMs?: number
   signal?: AbortSignal
   headers?: Record<string, string>
@@ -45,6 +48,28 @@ export class HttpError extends Error {
   }
 }
 
+/**
+ * No usable answer: the connection failed or dropped, or nothing came back in time. Electron's
+ * net.fetch reports these as plain Error('net::ERR_…') and Node's fetch as TypeError, so every
+ * transport failure is turned into this one type.
+ */
+export class NetworkError extends Error {
+  constructor(
+    message: string,
+    readonly url: string,
+    readonly timedOut: boolean,
+    options?: { cause?: unknown }
+  ) {
+    super(message, options)
+    this.name = 'NetworkError'
+  }
+}
+
+/** The server couldn't be reached or is having trouble, as opposed to refusing the request. */
+export function isUnreachable(error: unknown): boolean {
+  return error instanceof NetworkError || (error instanceof HttpError && (error.status >= 500 || error.status === 429 || error.status === 408))
+}
+
 /** Strips the query string, which can hold codes or tokens, from a URL used in a message. */
 export function redactUrl(url: string): string {
   const query = url.indexOf('?')
@@ -78,51 +103,60 @@ export class HttpClient {
 
   /** GET and parse JSON, retrying transient failures. */
   async getJson<T>(url: string, options: HttpOptions = {}): Promise<T> {
-    const response = await this.request(url, { method: 'GET', headers: { Accept: 'application/json' } }, { retries: 3, ...options })
-    return (await response.json()) as T
+    return this.send(url, { method: 'GET', headers: { Accept: 'application/json' } }, { retries: 3, ...options }, readJson<T>)
   }
 
-  /** GET the raw response (for streaming downloads), retrying transient failures before the body starts. */
+  /**
+   * GET the raw response, for streaming downloads, retrying transient failures before the body
+   * starts. The deadline ends when the headers arrive, so a slow but steady download isn't cut
+   * off; the caller's signal still cancels the body.
+   */
   async get(url: string, options: HttpOptions = {}): Promise<Response> {
     return this.request(url, { method: 'GET' }, { retries: 3, ...options })
   }
 
   /** POST a JSON body. Not retried unless asked: auth calls must not be replayed blindly. */
   async postJson<T>(url: string, body: unknown, options: HttpOptions = {}): Promise<T> {
-    const response = await this.request(
+    return this.send(
       url,
       { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json', Accept: 'application/json' } },
-      { retries: 0, ...options }
+      { retries: 0, ...options },
+      readJson<T>
     )
-    return (await response.json()) as T
   }
 
   /** POST application/x-www-form-urlencoded and parse JSON. */
   async postForm<T>(url: string, form: Record<string, string>, options: HttpOptions = {}): Promise<T> {
-    const response = await this.request(
+    return this.send(
       url,
       {
         method: 'POST',
         body: new URLSearchParams(form).toString(),
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }
       },
-      { retries: 0, ...options }
+      { retries: 0, ...options },
+      readJson<T>
     )
-    return (await response.json()) as T
   }
 
   /**
-   * Sends a request and returns the response when it is 2xx. Non-2xx responses become HttpError;
-   * transient failures are retried up to options.retries times.
+   * Sends a request and returns the response when it is 2xx. Non-2xx responses become HttpError,
+   * transport failures NetworkError; transient ones are retried up to options.retries times.
    */
   async request(url: string, init: RequestInit, options: HttpOptions = {}): Promise<Response> {
+    return this.send(url, init, options, async (response) => response)
+  }
+
+  /** One request with retries; `read` runs inside each attempt's deadline (JSON bodies are small). */
+  private async send<T>(url: string, init: RequestInit, options: HttpOptions, read: (response: Response) => Promise<T>): Promise<T> {
     const retries = options.retries ?? 0
     let lastError: unknown
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       options.signal?.throwIfAborted()
-      const timeout = AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS)
-      const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout
+      const deadline = new AbortController()
+      const timer = setTimeout(() => deadline.abort(new DOMException('The request timed out', 'TimeoutError')), options.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+      const signal = options.signal ? AbortSignal.any([options.signal, deadline.signal]) : deadline.signal
 
       try {
         const response = await this.fetchFn(url, {
@@ -132,7 +166,7 @@ export class HttpClient {
         })
 
         if (response.ok) {
-          return response
+          return await read(response)
         }
 
         const error = new HttpError(response.status, url, await errorBody(response), retryAfter(response), response.headers)
@@ -142,20 +176,39 @@ export class HttpClient {
         }
 
         lastError = error
+        clearTimeout(timer)
         await this.sleep(Math.max(error.retryAfterMs ?? 0, this.backoffMs(attempt)), options.signal)
       } catch (error) {
-        if (error instanceof HttpError || options.signal?.aborted || attempt === retries) {
+        // An HTTP error, a cancel, or a body that isn't JSON: nothing a retry would fix.
+        if (error instanceof HttpError || error instanceof SyntaxError || options.signal?.aborted) {
           throw error
         }
 
-        // A network error or a timed-out attempt: try again.
-        lastError = error
+        const failure = error instanceof NetworkError ? error : toNetworkError(error, url, deadline.signal.aborted)
+
+        if (attempt === retries) {
+          throw failure
+        }
+
+        lastError = failure
+        clearTimeout(timer)
         await this.sleep(this.backoffMs(attempt), options.signal)
+      } finally {
+        clearTimeout(timer)
       }
     }
 
     throw lastError
   }
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T
+}
+
+function toNetworkError(error: unknown, url: string, timedOut: boolean): NetworkError {
+  const reason = error instanceof Error ? error.message : String(error)
+  return new NetworkError(timedOut ? `No answer from ${redactUrl(url)} in time` : `Couldn't reach ${redactUrl(url)}: ${reason}`, url, timedOut, { cause: error })
 }
 
 const MAX_ERROR_BODY = 8192

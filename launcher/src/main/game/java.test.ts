@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { lstat, mkdtemp, readFile, readlink, rm } from 'node:fs/promises'
+import { lstat, mkdtemp, readFile, readlink, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { DownloadQueue } from '../net/downloads'
 import { HttpClient, type FetchFn } from '../net/http'
-import { JAVA_RUNTIME_INDEX, NoManagedJavaError, installJavaRuntime, javaExecutable, parseJavaVersion, runtimePlatformKey } from './java'
+import { JAVA_RUNTIME_INDEX, NoManagedJavaError, installJavaRuntime, javaExecutable, parseJavaVersion, runtimePlatformKey, windowlessJava } from './java'
 
 const sha1 = (text: string): string => createHash('sha1').update(text).digest('hex')
 const realIndex = JSON.parse(readFileSync(join(__dirname, '../../../test/fixtures/java-runtime-all.json'), 'utf8')) as Record<
@@ -37,6 +37,23 @@ describe('platform keys', () => {
     expect(javaExecutable('/r', 'win32')).toBe(join('/r', 'bin', 'javaw.exe'))
     expect(javaExecutable('/r', 'darwin')).toBe(join('/r', 'jre.bundle', 'Contents', 'Home', 'bin', 'java'))
     expect(javaExecutable('/r', 'linux')).toBe(join('/r', 'bin', 'java'))
+  })
+})
+
+describe('windowlessJava', () => {
+  it('uses javaw.exe beside a chosen java.exe on Windows only', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'wave-javaw-'))
+
+    try {
+      const java = join(dir, 'java.exe')
+      expect(await windowlessJava(java, 'win32')).toBe(java)
+      await writeFile(join(dir, 'javaw.exe'), '')
+      expect(await windowlessJava(java, 'win32')).toBe(join(dir, 'javaw.exe'))
+      expect(await windowlessJava(java, 'linux')).toBe(java)
+      expect(await windowlessJava(join(dir, 'javaw.exe'), 'win32')).toBe(join(dir, 'javaw.exe'))
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 })
 
@@ -117,6 +134,36 @@ describe('installJavaRuntime', () => {
         installJavaRuntime(http(fetch), new DownloadQueue({ http: http(fetch) }), dir, 'java-runtime-delta', { platform: 'linux', arch: 'x64' })
       ).rejects.toThrow(/Unsafe/)
     }
+  })
+
+  it('hashes every file again when Mojang updates the runtime, and works offline once installed', async () => {
+    const v1 = { files: { 'bin/java': { type: 'file', executable: true, downloads: { raw: { sha1: sha1('java-21.0.7'), size: 11, url: 'https://m/java' } } } } }
+    const v2 = { files: { 'bin/java': { type: 'file', executable: true, downloads: { raw: { sha1: sha1('java-21.0.8'), size: 11, url: 'https://m/java2' } } } } }
+    const serveVersion = (manifest: object, body: string, offline = false): FetchFn => {
+      const { fetch } = serve(manifest)
+      return async (url, init) => {
+        if (offline) {
+          throw new Error('net::ERR_INTERNET_DISCONNECTED')
+        }
+
+        return url === 'https://m/java2' ? new Response(body) : fetch(url, init)
+      }
+    }
+    const install = (fetch: FetchFn) => installJavaRuntime(http(fetch), new DownloadQueue({ http: http(fetch), retries: 0 }), dir, 'java-runtime-delta', { platform: 'linux', arch: 'x64' })
+
+    // Offline before anything is installed: nothing to fall back on.
+    await expect(install(serveVersion(v1, '', true))).rejects.toThrow(/ERR_INTERNET_DISCONNECTED/)
+
+    const v1Fetch: FetchFn = async (url, init) => (url === 'https://m/java' ? new Response('java-21.0.7') : serve(v1).fetch(url, init))
+    const java = await install(v1Fetch)
+    expect(await readFile(java, 'utf8')).toBe('java-21.0.7')
+
+    // Same size, new content: only a hash check notices.
+    await install(serveVersion(v2, 'java-21.0.8'))
+    expect(await readFile(java, 'utf8')).toBe('java-21.0.8')
+
+    // Offline: checked against the saved manifest, no network needed.
+    expect(await install(serveVersion(v2, '', true))).toBe(java)
   })
 
   it('explains when Mojang has no runtime for this machine', async () => {

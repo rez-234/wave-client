@@ -7,8 +7,8 @@ import { buildLaunchCommand, redact } from './game/launch-command'
 import { prepareGame, type GameContext } from './game/install'
 import { NoManagedJavaError } from './game/java'
 import { GameSession, MAX_LINES, type GameExit } from './game/process'
-import { DownloadError, HashMismatchError, SizeMismatchError } from './net/downloads'
-import { HttpError } from './net/http'
+import { DownloadError, HashMismatchError, SizeMismatchError, localFileProblem } from './net/downloads'
+import { HttpError, NetworkError } from './net/http'
 import type { SettingsStore } from './settings'
 
 export interface ControllerDeps {
@@ -85,7 +85,12 @@ export class GameController {
         repair: options.repair === true,
         javaPath: settings.javaPath,
         bundledModJar: await this.deps.bundledModJar(),
-        onTask: (task) => this.onTask(task)
+        // A cancelled or finished launch's stragglers mustn't change the state any more.
+        onTask: (task) => {
+          if (this.abort === abort && !abort.signal.aborted) {
+            this.onTask(task)
+          }
+        }
       })
 
       this.setState({ phase: 'preparing', task: { label: 'Signing in', doneFiles: 0, totalFiles: 0, doneBytes: 0, totalBytes: 0 } })
@@ -182,6 +187,16 @@ export function userMessage(error: unknown): string {
     return error.message
   }
 
+  const local = localFileProblem(error instanceof DownloadError ? error.failures.find((f) => localFileProblem(f.error))?.error : error)
+
+  if (local === 'disk-full') {
+    return 'Your disk is full. Free up some space and try again.'
+  }
+
+  if (local === 'no-permission' || local === 'unwritable') {
+    return "Wave Client couldn't write its game files (permission denied)."
+  }
+
   if (error instanceof DownloadError) {
     const hashes = error.failures.some((f) => f.error instanceof HashMismatchError || f.error instanceof SizeMismatchError)
     return hashes
@@ -195,7 +210,7 @@ export function userMessage(error: unknown): string {
       : `A download server answered with an error (HTTP ${error.status}). Please try again later.`
   }
 
-  if (error instanceof TypeError || (error instanceof Error && (error.name === 'TimeoutError' || /ENOTFOUND|ECONNRESET|ETIMEDOUT|EAI_AGAIN/.test(error.message)))) {
+  if (error instanceof NetworkError) {
     return "Couldn't reach the download servers. Check your internet connection."
   }
 

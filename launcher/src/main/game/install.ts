@@ -9,7 +9,7 @@ import { inside, instanceDir, versionFiles, type LauncherPaths } from '../paths'
 import { installAssets } from './assets'
 import { prepareClientMods } from './client-mods'
 import { fillMissingHashes, loadFabricProfile } from './fabric'
-import { installJavaRuntime, probeJava } from './java'
+import { installJavaRuntime, probeJava, windowlessJava } from './java'
 import { PINS } from './pins'
 import { mergeVersions, mojangOsName, resolveLibraries, type RuleEnvironment, type VersionJson } from './version'
 
@@ -93,7 +93,7 @@ export async function prepareGame(context: GameContext, options: PrepareOptions)
       throw new Error(`Minecraft ${PINS.minecraft} needs Java ${required}, but the Java chosen in Settings is ${info.version}.`)
     }
 
-    java = options.javaPath
+    java = await windowlessJava(options.javaPath, context.platform)
   } else {
     java = await installJavaRuntime(http, queue, paths.runtimes, version.javaVersion?.component ?? 'java-runtime-delta', {
       signal,
@@ -105,7 +105,7 @@ export async function prepareGame(context: GameContext, options: PrepareOptions)
   }
 
   announce('Checking game files')
-  const libraries = await fillMissingHashes(http, resolveLibraries(version.libraries ?? [], env), signal)
+  const libraries = await fillMissingHashes(http, paths.libraries, resolveLibraries(version.libraries ?? [], env), signal)
   const clientJar = versionFiles(paths, PINS.minecraft).jar
   const logConfig = version.logging?.client?.file
   const logConfigPath = logConfig ? inside(join(paths.assets, 'log_configs'), logConfig.id) : null
@@ -125,7 +125,7 @@ export async function prepareGame(context: GameContext, options: PrepareOptions)
   const assets = await installAssets(queue, paths.assets, version.assetIndex, gameDir, { signal, verify, onProgress: task('Downloading assets') })
 
   announce('Preparing mods')
-  const clientMods = await prepareClientMods(http, queue, paths.client, PINS.fabricApi, options.bundledModJar, { signal, verify })
+  const clientMods = await prepareClientMods(http, queue, paths.client, paths.libraries, PINS.fabricApi, options.bundledModJar, { signal, verify })
 
   const nativesDir = join(versionFiles(paths, version.id).dir, 'natives')
   await mkdir(nativesDir, { recursive: true })

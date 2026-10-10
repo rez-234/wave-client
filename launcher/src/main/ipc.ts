@@ -32,7 +32,10 @@ export interface IpcDeps {
 const ACCOUNT_ID = /^[0-9a-f]{32}$/
 const FOLDERS: FolderKind[] = ['game', 'mods', 'logs', 'crash-reports', 'screenshots', 'launcher']
 
-/** Registers every handler. Calls from anything but the launcher's own page are refused. */
+/**
+ * Registers every handler. Calls from anything but the launcher's own page are refused. Returns
+ * emitAccounts, which sends the account list to the window (the store calls it on every change).
+ */
 export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
   let signIn: AbortController | null = null
 
@@ -96,7 +99,12 @@ export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
     signIn?.abort()
     const controller = new AbortController()
     signIn = controller
-    const emit = (event: SignInEvent): void => send(IpcChannels.eventSignIn, event)
+    // A newer sign-in replaces this one; this one's late events would confuse the window.
+    const emit = (event: SignInEvent): void => {
+      if (signIn === controller) {
+        send(IpcChannels.eventSignIn, event)
+      }
+    }
 
     try {
       const account = await deps.auth.signIn(method as SignInMethod, emit, controller.signal)
@@ -105,8 +113,6 @@ export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
       if (view) {
         emit({ kind: 'done', account: view })
       }
-
-      emitAccounts()
     } catch (error) {
       if (error instanceof AuthError && error.code === 'cancelled') {
         emit({ kind: 'cancelled' })
@@ -138,7 +144,6 @@ export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
     }
 
     await deps.accounts.remove(id)
-    emitAccounts()
   })
 
   handle(IpcChannels.accountsSelect, async (id: unknown) => {
@@ -147,7 +152,6 @@ export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
     }
 
     await deps.accounts.select(id)
-    emitAccounts()
   })
 
   handle(IpcChannels.settingsGet, () => deps.settings.get())

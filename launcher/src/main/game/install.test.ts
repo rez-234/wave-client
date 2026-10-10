@@ -153,9 +153,14 @@ describe('prepareGame', () => {
     await prepareGame(context, { bundledModJar: mod })
 
     goOffline()
-    // Metadata comes from the cache; Java's index and Maven hashes need the network, so this fails
-    // loudly rather than launching unverified files.
-    await expect(prepareGame(context, { bundledModJar: mod })).rejects.toThrow()
+    // Everything was hash-checked when installed, and the metadata and hashes it was checked
+    // against were saved then, so nothing needs the network.
+    const game = await prepareGame(context, { bundledModJar: mod })
+    expect(game.java).toBe(join(paths.runtimes, 'java-runtime-delta', 'linux', 'bin', 'java'))
+
+    // A missing file does need it, and that fails.
+    await rm(join(paths.libraries, 'com/example/lib/1/lib-1.jar'))
+    await expect(prepareGame(context, { bundledModJar: mod })).rejects.toThrow(/download/)
   })
 
   it('checks a user-chosen Java is new enough', async () => {

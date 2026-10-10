@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
-import { HttpError, abortableSleep, type HttpClient } from '../net/http'
+import { HttpError, NetworkError, abortableSleep, type HttpClient } from '../net/http'
 import { AuthError } from './errors'
 
 /** Microsoft identity platform v2, personal accounts (Xbox sign-in is personal-account only). */
@@ -66,12 +66,12 @@ export async function signInWithBrowser(http: HttpClient, options: BrowserSignIn
   try {
     await options.openBrowser(authorizeUrl(options.clientId, receiver.redirectUri, challenge, state))
     const code = await receiver.code
-    return await redeem(http, options.clientId, {
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: receiver.redirectUri,
-      code_verifier: verifier
-    })
+    return await redeem(
+      http,
+      options.clientId,
+      { grant_type: 'authorization_code', code, redirect_uri: receiver.redirectUri, code_verifier: verifier },
+      options.signal
+    )
   } finally {
     receiver.close()
   }
@@ -185,7 +185,13 @@ export interface DeviceCodeOptions {
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>
 }
 
-/** Signs in by showing a code to enter at microsoft.com/link (RFC 8628). */
+/** The slowest polling gets after network trouble, so an approved code is still picked up soon. */
+const MAX_POLL_INTERVAL_MS = 30_000
+
+/**
+ * Signs in by showing a code to enter at microsoft.com/link (RFC 8628). Polling survives network
+ * trouble (it backs off and tries again), since the player may already have entered the code.
+ */
 export async function signInWithDeviceCode(http: HttpClient, options: DeviceCodeOptions): Promise<MicrosoftTokens> {
   const now = options.now ?? Date.now
   const sleep = options.sleep ?? abortableSleep
@@ -221,6 +227,11 @@ export async function signInWithDeviceCode(http: HttpClient, options: DeviceCode
         throw new AuthError('cancelled', 'Sign-in was cancelled.')
       }
 
+      if (error instanceof AuthError && (error.code === 'network' || error.code === 'rate-limited')) {
+        interval = Math.min(MAX_POLL_INTERVAL_MS, interval * 2)
+        continue
+      }
+
       if (!(error instanceof OAuthError)) {
         throw error
       }
@@ -230,6 +241,9 @@ export async function signInWithDeviceCode(http: HttpClient, options: DeviceCode
           continue
         case 'slow_down':
           interval += 5000
+          continue
+        case 'temporarily_unavailable':
+          interval = Math.min(MAX_POLL_INTERVAL_MS, interval * 2)
           continue
         case 'authorization_declined':
           throw new AuthError('declined', 'Sign-in was declined.')
@@ -317,8 +331,13 @@ export function mapNetwork(error: unknown): unknown {
     return new AuthError('unexpected', 'Sign-in failed.', undefined, error.message)
   }
 
-  if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError' || error instanceof TypeError)) {
+  if (error instanceof NetworkError) {
     return new AuthError('network', "Couldn't reach the sign-in service. Check your internet connection.", undefined, error.message)
+  }
+
+  // The player (or a newer sign-in) cancelled while a request was in flight.
+  if (error instanceof Error && error.name === 'AbortError') {
+    return new AuthError('cancelled', 'Sign-in was cancelled.')
   }
 
   return error

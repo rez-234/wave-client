@@ -1,10 +1,10 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { access, constants, lstat, mkdir, readlink, rm, symlink, writeFile } from 'node:fs/promises'
-import { dirname, isAbsolute, join } from 'node:path'
+import { access, constants, lstat, mkdir, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises'
+import { dirname, isAbsolute, join, win32 } from 'node:path'
 
 import { HashMismatchError, type DownloadItem, type DownloadOptions, type DownloadQueue } from '../net/downloads'
-import type { HttpClient } from '../net/http'
+import { isUnreachable, type HttpClient } from '../net/http'
 import { inside } from '../paths'
 
 /** Mojang's index of Java runtimes per platform and component. */
@@ -28,6 +28,19 @@ interface RuntimeFile {
 interface RuntimeManifest {
   files: Record<string, RuntimeFile>
 }
+
+/** Written into an installed runtime, last, once it is complete. */
+interface RuntimeMarker {
+  component: string
+  platform: string
+  version: string
+  /** The manifest the files were checked against; a different one means Mojang updated the runtime. */
+  manifestSha1: string
+}
+
+const MARKER = '.wave-runtime.json'
+/** The manifest itself, so an installed runtime can be checked without Mojang's servers. */
+const SAVED_MANIFEST = '.wave-runtime-manifest.json'
 
 export class NoManagedJavaError extends Error {
   constructor(readonly platformKey: string | null, readonly component: string) {
@@ -75,6 +88,19 @@ export function javaExecutable(runtimeDir: string, platform: string): string {
   }
 }
 
+/**
+ * On Windows java.exe opens a console window beside the game, and closing that window kills the
+ * game. A java.exe chosen in Settings is swapped for the javaw.exe next to it when there is one.
+ */
+export async function windowlessJava(javaPath: string, platform: string): Promise<string> {
+  if (platform !== 'win32' || win32.basename(javaPath).toLowerCase() !== 'java.exe') {
+    return javaPath
+  }
+
+  const javaw = `${javaPath.slice(0, -'java.exe'.length)}javaw.exe`
+  return (await access(javaw).then(() => true, () => false)) ? javaw : javaPath
+}
+
 export interface JavaInstallOptions extends DownloadOptions {
   platform?: string
   arch?: string
@@ -83,7 +109,9 @@ export interface JavaInstallOptions extends DownloadOptions {
 /**
  * Installs (or checks) the Java runtime Mojang publishes for a component such as
  * "java-runtime-delta" (Java 21), under <runtimes>/<component>/<platform>/, and returns the
- * path of its java executable.
+ * path of its java executable. When Mojang has updated the runtime, every file is hashed again
+ * (an updated file can keep its size). When Mojang can't be reached, an installed runtime is
+ * checked against the manifest saved with it.
  */
 export async function installJavaRuntime(
   http: HttpClient,
@@ -99,15 +127,31 @@ export async function installJavaRuntime(
     throw new NoManagedJavaError(null, component)
   }
 
-  const index = await http.getJson<RuntimeIndex>(JAVA_RUNTIME_INDEX, { signal: options.signal })
-  const entry = index[key]?.[component]?.[0]
+  const root = inside(inside(runtimesDir, component), key)
+  const installed = await readInstalled(root)
+  let latest: { sha1: string; version: string; text: string }
 
-  if (!entry) {
-    throw new NoManagedJavaError(key, component)
+  try {
+    const index = await http.getJson<RuntimeIndex>(JAVA_RUNTIME_INDEX, { signal: options.signal })
+    const entry = index[key]?.[component]?.[0]
+
+    if (!entry) {
+      throw new NoManagedJavaError(key, component)
+    }
+
+    const sha1 = entry.manifest.sha1.toLowerCase()
+    const text = installed?.marker.manifestSha1 === sha1 ? installed.text : await getVerifiedText(http, entry.manifest.url, sha1, options.signal)
+    latest = { sha1, version: entry.version.name, text }
+  } catch (error) {
+    if (options.signal?.aborted || !installed || !isUnreachable(error)) {
+      throw error
+    }
+
+    latest = { sha1: installed.marker.manifestSha1, version: installed.marker.version, text: installed.text }
   }
 
-  const manifest = await getVerifiedJson<RuntimeManifest>(http, entry.manifest.url, entry.manifest.sha1, options.signal)
-  const root = inside(inside(runtimesDir, component), key)
+  const manifest = JSON.parse(latest.text) as RuntimeManifest
+  const updated = installed?.marker.manifestSha1 !== latest.sha1
   const downloads: DownloadItem[] = []
   const links: { path: string; target: string }[] = []
 
@@ -130,7 +174,7 @@ export async function installJavaRuntime(
     }
   }
 
-  await queue.run(downloads, options)
+  await queue.run(downloads, updated ? { ...options, verify: 'hash' } : options)
 
   if (platform !== 'win32') {
     for (const link of links) {
@@ -140,8 +184,26 @@ export async function installJavaRuntime(
 
   const java = javaExecutable(root, platform)
   await access(java, platform === 'win32' ? constants.F_OK : constants.X_OK)
-  await writeFile(join(root, '.wave-runtime.json'), JSON.stringify({ component, platform: key, version: entry.version.name }, null, 2))
+  const marker: RuntimeMarker = { component, platform: key, version: latest.version, manifestSha1: latest.sha1 }
+  await writeFile(join(root, SAVED_MANIFEST), latest.text)
+  await writeFile(join(root, MARKER), JSON.stringify(marker, null, 2))
   return java
+}
+
+/** The installed runtime's marker and saved manifest, if both are there and agree. */
+async function readInstalled(root: string): Promise<{ marker: RuntimeMarker; text: string } | null> {
+  try {
+    const marker = JSON.parse(await readFile(join(root, MARKER), 'utf8')) as Partial<RuntimeMarker>
+    const text = await readFile(join(root, SAVED_MANIFEST), 'utf8')
+
+    if (typeof marker.manifestSha1 !== 'string' || typeof marker.version !== 'string' || createHash('sha1').update(text).digest('hex') !== marker.manifestSha1) {
+      return null
+    }
+
+    return { marker: marker as RuntimeMarker, text }
+  } catch {
+    return null
+  }
 }
 
 async function ensureSymlink(path: string, target: string): Promise<void> {
@@ -161,15 +223,15 @@ async function ensureSymlink(path: string, target: string): Promise<void> {
   await symlink(target, path)
 }
 
-async function getVerifiedJson<T>(http: HttpClient, url: string, sha1: string, signal?: AbortSignal): Promise<T> {
+async function getVerifiedText(http: HttpClient, url: string, sha1: string, signal?: AbortSignal): Promise<string> {
   const text = await (await http.get(url, { signal })).text()
   const actual = createHash('sha1').update(text).digest('hex')
 
-  if (actual !== sha1.toLowerCase()) {
+  if (actual !== sha1) {
     throw new HashMismatchError(url, sha1, actual)
   }
 
-  return JSON.parse(text) as T
+  return text
 }
 
 export interface JavaInfo {
