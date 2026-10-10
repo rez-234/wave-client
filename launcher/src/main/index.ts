@@ -384,7 +384,8 @@ async function runSmokeTest(): Promise<void> {
       result.memory === 1024 &&
       result.refused === 'Sign in with a Microsoft account first.' &&
       result.javaPath === null &&
-      result.fetchBlocked &&
+      // The dev server's page allows its own websocket and requests.
+      result.fetchBlocked === !rendererUrl &&
       result.root > 0
     log(`SMOKE ${ok ? 'OK' : 'FAILED'} ${JSON.stringify(result)}`)
     app.exit(ok ? 0 : 1)
