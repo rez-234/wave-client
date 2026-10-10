@@ -106,6 +106,11 @@ export class HttpClient {
     return this.send(url, { method: 'GET', headers: { Accept: 'application/json' } }, { retries: 3, ...options }, readJson<T>)
   }
 
+  /** GET a small text body (a .sha1 file, a manifest), retrying transient failures; the deadline covers the body too. */
+  async getText(url: string, options: HttpOptions = {}): Promise<string> {
+    return this.send(url, { method: 'GET' }, { retries: 3, ...options }, readText)
+  }
+
   /**
    * GET the raw response, for streaming downloads, retrying transient failures before the body
    * starts. The deadline ends when the headers arrive, so a slow but steady download isn't cut
@@ -147,7 +152,7 @@ export class HttpClient {
     return this.send(url, init, options, async (response) => response)
   }
 
-  /** One request with retries; `read` runs inside each attempt's deadline (JSON bodies are small). */
+  /** One request with retries; `read` runs inside each attempt's deadline (whole bodies read here are small). */
   private async send<T>(url: string, init: RequestInit, options: HttpOptions, read: (response: Response) => Promise<T>): Promise<T> {
     const retries = options.retries ?? 0
     let lastError: unknown
@@ -204,6 +209,10 @@ export class HttpClient {
 
 async function readJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T
+}
+
+function readText(response: Response): Promise<string> {
+  return response.text()
 }
 
 function toNetworkError(error: unknown, url: string, timedOut: boolean): NetworkError {

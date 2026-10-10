@@ -50,6 +50,8 @@ export class AccountStore {
   private writing: Promise<void> = Promise.resolve()
   /** Called after every change (sign-in, refresh, selection, sign-out), so the window can show it. */
   onChange: (() => void) | null = null
+  /** accounts.dat exists but couldn't be read this time. */
+  private unreadable = false
 
   constructor(
     private readonly file: string,
@@ -85,11 +87,10 @@ export class AccountStore {
       }
     } catch (error) {
       // Encrypted under a different OS user or keychain, or the keychain refused this time. Start
-      // over, but keep the file: the next save would otherwise destroy accounts that a later
-      // start might still read.
-      const kept = `${this.file}.unreadable-${Date.now()}`
-      await rename(this.file, kept).catch(() => {})
-      this.log(`Saved accounts could not be decrypted and were set aside as ${kept}: ${error instanceof Error ? error.message : String(error)}`)
+      // empty but leave the file alone: a later start may read it again. Only if something new is
+      // saved meanwhile is it set aside (never overwritten).
+      this.unreadable = true
+      this.log(`Saved accounts could not be decrypted and were ignored: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
@@ -184,6 +185,13 @@ export class AccountStore {
   private async write(): Promise<void> {
     if (!this.secrets.available()) {
       return
+    }
+
+    if (this.unreadable) {
+      const kept = `${this.file}.unreadable-${Date.now()}`
+      await rename(this.file, kept).catch(() => {})
+      this.unreadable = false
+      this.log(`Saved accounts that could not be read were set aside as ${kept}`)
     }
 
     if (this.data.accounts.length === 0) {

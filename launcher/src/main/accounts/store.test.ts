@@ -110,15 +110,29 @@ describe('AccountStore', () => {
     expect(await readdir(dir)).toEqual(['accounts.dat'])
   })
 
-  it('sets aside a file it cannot decrypt instead of overwriting it later', async () => {
-    await writeFile(file, 'garbage')
-    const store = new AccountStore(file, { ...box(), decrypt: () => { throw new Error('wrong key') } })
-    await store.load()
-    expect(store.list()).toEqual([])
-    const names = await readdir(dir)
-    expect(names).toHaveLength(1)
-    expect(names[0]).toMatch(/^accounts\.dat\.unreadable-\d+$/)
-    expect(await readFile(join(dir, names[0]!), 'utf8')).toBe('garbage')
+  it('leaves a file it cannot decrypt for a later start, and sets it aside before saving over it', async () => {
+    const good = new AccountStore(file, box())
+    await good.load()
+    await good.upsert(account('a', 'Alex'))
+
+    // One start where the keychain refuses: nothing is lost.
+    const refused = new AccountStore(file, { ...box(), decrypt: () => { throw new Error('keychain locked') } })
+    await refused.load()
+    expect(refused.list()).toEqual([])
+    expect(await readdir(dir)).toEqual(['accounts.dat'])
+
+    const later = new AccountStore(file, box())
+    await later.load()
+    expect(later.list().map((a) => a.name)).toEqual(['Alex'])
+
+    // Signing in during a refused start keeps the unreadable file under another name.
+    const again = new AccountStore(file, { ...box(), decrypt: () => { throw new Error('keychain locked') } })
+    await again.load()
+    await again.upsert(account('b', 'Steve'))
+    const names = (await readdir(dir)).sort()
+    expect(names).toHaveLength(2)
+    expect(names[0]).toBe('accounts.dat')
+    expect(names[1]).toMatch(/^accounts\.dat\.unreadable-\d+$/)
   })
 
   it('ignores a malformed file', async () => {

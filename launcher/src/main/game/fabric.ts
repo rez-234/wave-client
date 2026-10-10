@@ -98,7 +98,7 @@ export async function mavenSha1(http: HttpClient, librariesDir: string, relative
     return known[1]!.toLowerCase()
   }
 
-  const text = await (await http.get(`${artifactUrl}.sha1`, { signal })).text()
+  const text = await http.getText(`${artifactUrl}.sha1`, { signal })
   const match = SHA1.exec(text)
 
   if (!match) {

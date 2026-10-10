@@ -197,6 +197,10 @@ export function userMessage(error: unknown): string {
     return "Wave Client couldn't write its game files (permission denied)."
   }
 
+  if (local === 'in-use') {
+    return 'A game file is in use by another program. Close any running Minecraft and try again.'
+  }
+
   if (error instanceof DownloadError) {
     const hashes = error.failures.some((f) => f.error instanceof HashMismatchError || f.error instanceof SizeMismatchError)
     return hashes

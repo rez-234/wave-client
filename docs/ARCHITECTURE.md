@@ -214,12 +214,12 @@ typed `window.wave` API (`src/shared/ipc.ts`).
 
 | Module | Responsibility |
 |---|---|
-| `net/http` | fetch wrapper (Electron `net.fetch`, so the system proxy applies): a deadline for the answer (and for small JSON bodies), cancellation, `Retry-After`-aware retries for idempotent requests; every transport failure becomes one `NetworkError` (Electron reports them as plain `net::ERR_*` errors); errors never echo request bodies or query strings |
+| `net/http` | fetch wrapper (Electron `net.fetch`, so the system proxy applies): a deadline for the answer (and for small JSON and text bodies), cancellation, `Retry-After`-aware retries for idempotent requests; every transport failure becomes one `NetworkError` (Electron reports them as plain `net::ERR_*` errors); errors never echo request bodies or query strings |
 | `net/downloads` | Parallel queue: `.part` file, size + SHA-1 check, atomic rename, per-file retries, skip valid files, re-hash everything in repair mode; no limit on a whole file, but one that receives nothing for 30 s is dropped; a full or read-only disk isn't retried; a cancel returns only once every worker has stopped |
 | `auth/microsoft` | Microsoft identity platform v2 (`consumers`): auth code + PKCE S256 in the system browser with a loopback redirect (listen on 127.0.0.1, redirect `http://localhost:<port>`, state and Host checked); device code fallback; rotated refresh tokens |
 | `auth/xbox-minecraft` | Xbox Live user token (`d=` ticket) → XSTS for `rp://api.minecraftservices.com/` (XErr codes mapped to messages) → `login_with_xbox` ("Invalid app registration" recognised, never retried) → profile (404 explained via entitlements) |
 | `auth/service` | Sign-in chain; refresh before launch when < 12 h of the 24 h token remain, one refresh per account at a time, rotated refresh token saved first, `invalid_grant` or a changed app id → "sign in again", still-valid token used during an outage |
-| `accounts/store` | `accounts.dat` encrypted with `safeStorage`; not written at all when only Linux's insecure `basic_text` backend exists (session-only accounts); saves queued one at a time; a file that can't be decrypted is set aside, never overwritten; every change is pushed to the window |
+| `accounts/store` | `accounts.dat` encrypted with `safeStorage`; not written at all when only Linux's insecure `basic_text` backend exists (session-only accounts); saves queued one at a time; a file that can't be decrypted is left for a later start and set aside (never overwritten) only if something new is saved; every change is pushed to the window |
 | `game/version` | Version JSON rules (last match wins, `x86` = 32-bit JVM, features), `inheritsFrom` merge (scalars from the child, arguments parent then child, libraries child first and de-duplicated by group:artifact:classifier, as Fabric's Knot refuses duplicate ASM), argument templating |
 | `game/java` | Mojang's Java runtime index and per-component manifests (verified), files, executable bits, links kept inside the runtime; every file re-hashed when Mojang updates the runtime (an updated file can keep its size); the manifest saved with the runtime for offline checks; clear error where Mojang ships none (32-bit, Linux on ARM); probes a user-chosen Java and runs a chosen `java.exe` as the `javaw.exe` beside it |
 | `game/fabric`, `game/client-mods` | Fabric meta profile (cached for offline use); Maven `.sha1` fetched for the loader, intermediary and Fabric API (which the profile leaves unhashed) and saved next to the jars; `client/` holds exactly our mod and the pinned Fabric API for `-Dfabric.addMods` |
@@ -259,9 +259,11 @@ Pinned versions (`game/pins.ts`, checked against `mod/gradle.properties` by a te
 - IPC: every handler checks the sender is the main window's top frame on the app's own page and
   validates arguments; only plain messages cross back. Help links open in the browser only for
   https Microsoft, Xbox and Minecraft hosts. The page can't choose what runs: a Java is set only
-  through the native file picker, and JVM options that run or load code (`-XX:OnError`,
-  `-javaagent`, `-cp`, argument files, `-Dfabric.addMods` and the like) are saved only after the
-  player confirms them in a native dialog. A crash file is opened only if it's the shown crash's
+  through the native file picker, and JVM options other than known-harmless shapes (memory and
+  GC tuning, boolean `-XX` flags, ordinary `-D` properties) are saved only after the player
+  confirms them in a native dialog. That covers anything that runs commands or loads agents,
+  classes or native libraries (`-XX:OnError`, `-javaagent`, `-Xrun`, `-cp`, `-p`/`-m`, argument
+  files, `-Dfabric.addMods`, `-Dorg.lwjgl.*`, JMX) in any spelling. A crash file is opened only if it's the shown crash's
   own report or JVM log.
 - Quitting while the game runs asks first (macOS Cmd+Q); starting Wave Client again, or the
   Dock icon, brings the window back.

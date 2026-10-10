@@ -124,14 +124,52 @@ export class SettingsStore {
   }
 }
 
+/** -XX options whose value is a command to run or a file to load. */
+const XX_UNSAFE = /^(OnError|OnOutOfMemoryError|Flags|VMOptionsFile|JVMCILibPath|SharedArchiveFile|ArchiveClassesAtExit|SharedClassListFile|ErrorFile|HeapDumpPath|LogFile|StartFlightRecording)$/i
+
+/** System properties that load code or native libraries, configure logging from a file, or open remote access. */
+const PROPERTY_UNSAFE =
+  /^(java\.(?!net\.prefer\w+$|awt\.headless$)|jdk\.|sun\.|com\.sun\.|javax\.|jna\.|org\.lwjgl\.|fabric\.|mixin\.|log4j2?\.(configuration|contextSelector|\w*[Ff]actory)|.*\.library\.path$)/
+
+/** Option shapes known to be harmless: memory, GC and tuning flags, plain properties. */
+const SAFE_JVM_ARG: RegExp[] = [
+  /^-X(ms|mx|mn|ss)\d+[kKmMgGtT]?$/,
+  /^-XX:[+-]\w+$/,
+  /^-Xshare:(auto|on|off)$/,
+  /^-Xlog:(?!.*file=)\S*$/,
+  /^-(server|client|ea|da|esa|dsa|enableassertions|disableassertions|enablesystemassertions|disablesystemassertions)$/,
+  /^--enable-preview$/
+]
+
 /**
- * JVM options that run or load code from elsewhere: commands on errors, agents, extra class or
- * mod paths, argument files, other log4j configurations. The JVM arguments field is free-form on
- * purpose, but saving one of these needs the player's confirmation in a native dialog, which a
- * script in the page can't give.
+ * The JVM options the player should confirm before they are saved: anything that isn't one of a
+ * few known-harmless shapes (memory and GC tuning, boolean -XX flags, -XX:Name=number-like values,
+ * ordinary -D properties). That covers options that run commands, load agents, classes or native
+ * libraries, replace the main class or open remote access, in every spelling. The field stays
+ * free-form; this only decides when to ask, in a native dialog that script in the page can't answer.
  */
 export function riskyJvmArgs(args: readonly string[]): string[] {
-  return args.filter((arg) =>
-    /^(-XX:[+-]?(OnError|OnOutOfMemoryError|VMOptionsFile|Flags)=|-javaagent:|-agentlib:|-agentpath:|-Xbootclasspath|-(cp|classpath|jar)$|--class-path|--module-path|--patch-module|--upgrade-module-path|-D(java\.system\.class\.loader|java\.library\.path|jdk\.module\.|fabric\.addMods|fabric\.gameJarPath|fabric\.remapClasspathFile|fabric\.classPathGroups|log4j2?\.configurationFile)|@)/i.test(arg)
-  )
+  return args.filter((arg) => !isSafeJvmArg(arg))
 }
+
+function isSafeJvmArg(arg: string): boolean {
+  if (SAFE_JVM_ARG.some((pattern) => pattern.test(arg))) {
+    return true
+  }
+
+  const xx = /^-XX:(\w+)=([\w.+-]+)$/.exec(arg)
+
+  if (xx) {
+    return !XX_UNSAFE.test(xx[1]!)
+  }
+
+  const property = /^-D([\w.-]+)(=(.*))?$/s.exec(arg)
+
+  if (property) {
+    // A value that names a file or a URL could point anywhere; ask about it.
+    return !PROPERTY_UNSAFE.test(property[1]!) && !/[\\/]|^\w{2,}:/.test(property[3] ?? '')
+  }
+
+  return false
+}
+

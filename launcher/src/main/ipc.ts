@@ -3,7 +3,7 @@ import { join } from 'node:path'
 
 import { BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 
-import { IpcChannels, type AccountView, type AppInfo, type FolderKind, type JavaStatus, type SignInEvent, type SignInMethod } from '@shared/ipc'
+import { IpcChannels, type AccountView, type AppInfo, type FolderKind, type JavaStatus, type LauncherSettings, type SignInEvent, type SignInMethod } from '@shared/ipc'
 
 import type { AccountStore } from './accounts/store'
 import { AuthError } from './auth/errors'
@@ -156,7 +156,20 @@ export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
 
   handle(IpcChannels.settingsGet, () => deps.settings.get())
 
-  handle(IpcChannels.settingsSet, async (changes: unknown) => {
+  // One change at a time, so a second call (say, a blur right after Enter) sees what the first
+  // saved and doesn't ask about the same JVM options again.
+  let settingsQueue: Promise<unknown> = Promise.resolve()
+
+  handle(IpcChannels.settingsSet, (changes: unknown) => {
+    const run = settingsQueue.then(
+      () => applySettings(changes),
+      () => applySettings(changes)
+    )
+    settingsQueue = run.catch(() => {})
+    return run
+  })
+
+  const applySettings = async (changes: unknown): Promise<LauncherSettings> => {
     const patch: Record<string, unknown> = typeof changes === 'object' && changes !== null ? { ...changes } : {}
 
     // What runs as Java comes only from the file picker below (or back to the bundled Java).
@@ -174,7 +187,7 @@ export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
     }
 
     return deps.settings.set(patch)
-  })
+  }
 
   handle(IpcChannels.settingsPickJava, async () => {
     const window = deps.window()

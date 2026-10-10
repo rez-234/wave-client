@@ -138,9 +138,10 @@ describe('HttpClient', () => {
     expect(await response.text()).toBe('xxxxxx')
   })
 
-  it('still limits a JSON body that stops arriving', async () => {
+  it('still limits a JSON or text body that stops arriving', async () => {
     const stuck: FetchFn = async (_url, init) => new Response(trickle(1_000, 10_000, init?.signal))
     await expect(client(stuck).getJson('https://x/a', { timeoutMs: 30, retries: 0 })).rejects.toMatchObject({ name: 'NetworkError', timedOut: true })
+    await expect(client(stuck).getText('https://x/a.sha1', { timeoutMs: 30, retries: 0 })).rejects.toMatchObject({ name: 'NetworkError', timedOut: true })
   })
 
   it('keeps query strings out of error messages', async () => {

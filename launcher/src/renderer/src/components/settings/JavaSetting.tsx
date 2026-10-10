@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from 'react'
+import { useEffect, useRef, useState, type JSX } from 'react'
 
 import type { JavaStatus } from '@shared/ipc'
 
@@ -21,12 +21,13 @@ interface JavaSettingProps {
 
 /** The bundled Java (recommended), or a Java executable the player picks. */
 export function JavaSetting({ javaPath, disabled, onPick, onPicked, onReset, onCheck }: JavaSettingProps): JSX.Element {
-  const [picked, setPicked] = useState<{ path: string; version: string } | null>(null)
+  /** What the newest check or pick found; a pick counts as a fresh check. */
   const [status, setStatus] = useState<JavaStatus | null>(null)
   const [picking, setPicking] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** Numbers checks and picks, so an older answer never replaces a newer one. */
+  const latest = useRef(0)
   const checked = status && status.path === javaPath ? status : null
-  const version = checked?.version ?? (picked && picked.path === javaPath ? picked.version : null)
 
   // The saved Java may have been updated or removed since it was chosen.
   useEffect(() => {
@@ -34,13 +35,10 @@ export function JavaSetting({ javaPath, disabled, onPick, onPicked, onReset, onC
       return
     }
 
-    let active = true
+    const request = ++latest.current
     onCheck()
-      .then((result) => active && setStatus(result))
+      .then((result) => request === latest.current && setStatus(result))
       .catch(() => {})
-    return () => {
-      active = false
-    }
   }, [javaPath, onCheck])
 
   const browse = (): void => {
@@ -49,7 +47,8 @@ export function JavaSetting({ javaPath, disabled, onPick, onPicked, onReset, onC
     onPick()
       .then(async (result) => {
         if (result) {
-          setPicked(result)
+          latest.current++
+          setStatus({ path: result.path, version: result.version, problem: null })
           await onPicked()
         }
       })
@@ -67,7 +66,7 @@ export function JavaSetting({ javaPath, disabled, onPick, onPicked, onReset, onC
             <p>Use the Java that comes with Wave Client (recommended).</p>
           ) : (
             <>
-              <p>Using your own Java{version ? `: Java ${version}` : ''}.</p>
+              <p>Using your own Java{checked?.version ? `: Java ${checked.version}` : ''}.</p>
               <p className="path mono" title={javaPath}>
                 {javaPath}
               </p>

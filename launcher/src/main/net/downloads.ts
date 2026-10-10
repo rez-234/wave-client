@@ -318,12 +318,14 @@ function dedupe(items: DownloadItem[]): DownloadItem[] {
 }
 
 /**
- * A failure writing to this computer's disk rather than downloading: retrying won't help, and the
- * player needs to hear about the disk, not the internet. EPERM, EBUSY and EACCES on Windows are
- * usually an antivirus scanner holding the file for a moment, so they are retried there.
+ * A failure writing to this computer's disk rather than downloading, which the player needs to
+ * hear about (not "check your internet"). When `retrying`, Windows' EPERM, EACCES and EBUSY don't
+ * count: they are usually an antivirus scanner holding the file for a moment, so they are tried
+ * again; if they persist, they are reported as what they are.
  */
-export function localFileProblem(error: unknown): 'disk-full' | 'no-permission' | 'unwritable' | null {
+export function localFileProblem(error: unknown, retrying = false): 'disk-full' | 'no-permission' | 'in-use' | 'unwritable' | null {
   const code = (error as NodeJS.ErrnoException | null)?.code
+  const transientOnWindows = retrying && process.platform === 'win32'
 
   switch (code) {
     case 'ENOSPC':
@@ -331,7 +333,9 @@ export function localFileProblem(error: unknown): 'disk-full' | 'no-permission' 
       return 'disk-full'
     case 'EACCES':
     case 'EPERM':
-      return process.platform === 'win32' ? null : 'no-permission'
+      return transientOnWindows ? null : 'no-permission'
+    case 'EBUSY':
+      return transientOnWindows ? null : 'in-use'
     case 'EROFS':
     case 'ENOTDIR':
     case 'EISDIR':
@@ -347,7 +351,7 @@ function isRetryable(error: unknown): boolean {
   }
 
   // Bad hashes, truncated bodies and network errors are worth another try; a full disk isn't.
-  return localFileProblem(error) === null
+  return localFileProblem(error, true) === null
 }
 
 function describe(error: unknown): string {

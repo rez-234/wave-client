@@ -373,7 +373,18 @@ async function runSmokeTest(): Promise<void> {
         const info = await window.wave.app.info()
         const refused = await window.wave.game.launch().then(() => null, (error) => error.message)
         const settings = await window.wave.settings.set({ javaPath: '/bin/sh' })
-        const fetchBlocked = await fetch('index.html').then(() => false, () => true)
+        // XHR, not fetch: the wave: scheme serves XHR, so only the CSP can stop this request.
+        const fetchBlocked = await new Promise((done) => {
+          const request = new XMLHttpRequest()
+          request.onload = () => done(false)
+          request.onerror = () => done(true)
+          try {
+            request.open('GET', 'index.html')
+            request.send()
+          } catch {
+            done(true)
+          }
+        })
         return { bridge: typeof window.wave, keys: Object.keys(window.wave).sort().join(','), mc: info.minecraftVersion, memory: info.memoryRangeMb.min, refused, javaPath: settings.javaPath, fetchBlocked, root: document.getElementById('root')?.childElementCount ?? -1 }
       })()`
     )) as { bridge: string; keys: string; mc: string; memory: number; refused: string | null; javaPath: string | null; fetchBlocked: boolean; root: number }

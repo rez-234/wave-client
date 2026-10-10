@@ -224,7 +224,7 @@ async function ensureSymlink(path: string, target: string): Promise<void> {
 }
 
 async function getVerifiedText(http: HttpClient, url: string, sha1: string, signal?: AbortSignal): Promise<string> {
-  const text = await (await http.get(url, { signal })).text()
+  const text = await http.getText(url, { signal })
   const actual = createHash('sha1').update(text).digest('hex')
 
   if (actual !== sha1) {

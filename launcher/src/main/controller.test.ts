@@ -184,6 +184,16 @@ describe('userMessage', () => {
     const item = { url: 'https://x/a', path: '/a' }
     expect(userMessage(new DownloadError([{ item, error: new NetworkError('x', 'https://x/a', false) }]))).toMatch(/Couldn't download 1 game file/)
     expect(userMessage(new DownloadError([{ item, error: Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC' }) }]))).toMatch(/disk is full/)
+    // Retried on Windows (antivirus), but reported as what it is once the retries are spent.
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
+    Object.defineProperty(process, 'platform', { value: 'win32' })
+
+    try {
+      expect(userMessage(new DownloadError([{ item, error: Object.assign(new Error('EPERM: operation not permitted, rename'), { code: 'EPERM' }) }]))).toMatch(/permission denied/)
+      expect(userMessage(new DownloadError([{ item, error: Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' }) }]))).toMatch(/in use/)
+    } finally {
+      Object.defineProperty(process, 'platform', platform)
+    }
     expect(userMessage(new DownloadError([{ item, error: new HashMismatchError('u', 'a', 'b') }]))).toMatch(/checksum/)
     expect(userMessage(new HttpError(503, 'https://x', ''))).toMatch(/aren't responding/)
     expect(userMessage(new NetworkError("Couldn't reach https://x: net::ERR_INTERNET_DISCONNECTED", 'https://x', false))).toMatch(/internet connection/)

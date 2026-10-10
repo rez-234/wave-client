@@ -30,21 +30,41 @@ describe('sanitizeSettings', () => {
 })
 
 describe('riskyJvmArgs', () => {
-  it('picks out options that run or load code, and nothing else', () => {
-    const args = splitJvmArgs(
-      '-Xmx6G -XX:+UseZGC -XX:MaxGCPauseMillis=50 -Dsodium.checks=false -XX:OnOutOfMemoryError="cmd /c calc" -javaagent:\\\\h\\a.jar -agentlib:jdwp=x -Xbootclasspath/a:x -cp x @args.txt -Dfabric.addMods=x -Dlog4j2.configurationFile=http://x -Djava.library.path=x'
-    )
-    expect(riskyJvmArgs(args)).toEqual([
+  it('lets common tuning flags through without asking', () => {
+    const tuning =
+      '-Xmx6G -Xms2G -Xss4M -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:G1HeapRegionSize=8M ' +
+      '-XX:+UseZGC -XX:+ZGenerational -XX:-UseCompressedOops -Xshare:auto -Xlog:gc* -server -Dsodium.checks.issue2561=false -Dlog4j2.formatMsgNoLookups=true ' +
+      '-Dfile.encoding=UTF-8 -Djava.net.preferIPv4Stack=true -Dfml.ignoreInvalidMinecraftCertificates=true'
+    expect(riskyJvmArgs(splitJvmArgs(tuning))).toEqual([])
+  })
+
+  it('asks about anything that runs or loads code, in every spelling', () => {
+    const risky = [
       '-XX:OnOutOfMemoryError=cmd /c calc',
+      '-XX:OnError=calc',
       '-javaagent:\\\\h\\a.jar',
-      '-agentlib:jdwp=x',
+      '-agentlib:jdwp=transport=dt_socket',
+      '-Xrunjdwp:transport=dt_socket,server=y,address=*:5005',
       '-Xbootclasspath/a:x',
       '-cp',
+      '/evil',
+      '-p',
+      '-m',
+      'evil/evil.Main',
+      '--module-path=/x',
       '@args.txt',
       '-Dfabric.addMods=x',
       '-Dlog4j2.configurationFile=http://x',
-      '-Djava.library.path=x'
-    ])
+      '-Djava.library.path=x',
+      '-Djava.system.class.loader=Evil',
+      '-Dorg.lwjgl.librarypath=x',
+      '-Djna.library.path=x',
+      '-Dcom.sun.management.jmxremote.port=9010',
+      '-Dsome.plugin.dir=/tmp/x',
+      '-Xlog:gc*:file=gc.log',
+      '-XX:VMOptionsFile=x'
+    ]
+    expect(riskyJvmArgs(risky)).toEqual(risky)
   })
 })
 
