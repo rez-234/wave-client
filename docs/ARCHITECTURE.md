@@ -227,7 +227,9 @@ typed `window.wave` API (`src/shared/ipc.ts`).
 | `game/install` | The whole install in order, with progress per phase |
 | `game/launch-command` | JVM args from the version (with `-cp`), log4j config, `-Xms/-Xmx`, `-Dfabric.addMods`, user JVM args last (HotSpot keeps the last copy of a flag), main class, game args; every placeholder must be filled; `--xuid` from the token's claim, `--clientId` a per-install id |
 | `game/process`, `game/log-parser`, `game/crash` | Spawn without a shell, parse log4j XML events from stdout (plus plain lines), redact the token; on exit find the crash report (only inside the game's `crash-reports/`), `hs_err` log, Fabric resolution errors and suspect mods; a forced quit from the launcher is not a crash |
-| `controller`, `ipc`, `index` | One game at a time; the last 5000 lines of output across launches, each numbered by launch; IPC calls accepted only from the app's own window and page; the crash card opens only the shown crash's own files; window hardening |
+| `profiles`, `profile-actions` | `profiles.json`: name, game version, memory, JVM arguments, last played; ids are folder names fixed for life (never a Windows device name, unique ignoring case); a damaged file is set aside and the list rebuilt from `instances/`; folders found in `instances/` come back as profiles (so restoring one from the trash works); new profiles copy settings or everything from another into a staging folder, then rename; deleting moves the folder to the trash (or deletes it after a native warning) and never touches the running profile |
+| `mods/zip`, `mods/jar`, `mods/scan`, `mods/analyze`, `mods/service` | Reads a profile's `mods/` the way Fabric Loader does (top level, exact `.jar` suffix, `.jar.disabled` = off, names starting with `.` skipped); reads `fabric.mod.json` from each jar (and nested jars) with a zip reader that rejects what Java's would; checks Minecraft, Fabric Loader, Java and dependency versions with a port of Fabric's version and predicate rules; turns mods on or off by renaming (never over another file), removes to the trash, adds dropped or picked jars after checking them in the main process |
+| `controller`, `ipc`, `index` | One game at a time, for the profile selected when Play was pressed (its settings are read then); mods checked first, and errors Fabric would stop on stop the launch until the player chooses Play anyway for that exact set; the last 5000 lines of output across launches, each numbered by launch; IPC calls accepted only from the app's own window and page; the crash card opens only the shown crash's own files; window hardening |
 
 An installed game starts without the network: every file was hash-checked when installed, and
 the metadata and hashes it was checked against are saved. A Minecraft token that is still valid
@@ -236,6 +238,19 @@ is used when refreshing it fails for lack of a connection.
 Pinned versions (`game/pins.ts`, checked against `mod/gradle.properties` by a test): Minecraft
 1.21.11, Fabric Loader 0.19.5, Fabric API 0.141.6+1.21.11.
 
+### Profiles and mods
+
+Each profile has its own game folder, memory, JVM arguments and set of mods; game files are shared.
+Play launches the selected profile; viewing another one in the Profiles page doesn't select it.
+Wave Client and Fabric API come from `client/` and are not part of a profile's `mods/`.
+
+What counts as a problem follows Fabric Loader: only what Fabric itself would refuse to start with
+(wrong Minecraft or Java version, a missing or too old dependency, a `breaks`, an unreadable jar,
+a mod Wave Client already provides) is an error and stops Play; everything Fabric tolerates
+(a Forge mod in the folder, a duplicate, `recommends`, `conflicts`, a `.JAR` suffix that won't load)
+is a warning. Errors stop the launch with a card naming the first mods, with Review mods, Turn
+them off and play, and Play anyway; Play anyway is remembered until the set of errors changes.
+
 ### Disk layout
 
 ```
@@ -243,6 +258,7 @@ Pinned versions (`game/pins.ts`, checked against `mod/gradle.properties` by a te
   launcher.json, accounts.dat (encrypted), install-id, logs/launcher.log
   shared/{versions,libraries,assets,runtimes}/
   client/                      our mod + managed Fabric API
+  profiles.json                profiles (name, version, memory, JVM arguments)
   instances/<profile>/         game directory (mods/, config/, saves/, logs/, crash-reports/ ...)
   electron/                    Chromium's own data
 ```
@@ -258,13 +274,21 @@ Pinned versions (`game/pins.ts`, checked against `mod/gradle.properties` by a te
   websocket).
 - IPC: every handler checks the sender is the main window's top frame on the app's own page and
   validates arguments; only plain messages cross back. Help links open in the browser only for
-  https Microsoft, Xbox and Minecraft hosts. The page can't choose what runs: a Java is set only
+  https Microsoft, Xbox, Minecraft and Modrinth hosts. The page can't choose what runs: a Java is set only
   through the native file picker, and JVM options other than known-harmless shapes (memory and
   GC tuning, boolean `-XX` flags, ordinary `-D` properties) are saved only after the player
   confirms them in a native dialog. That covers anything that runs commands or loads agents,
   classes or native libraries (`-XX:OnError`, `-javaagent`, `-Xrun`, `-cp`, `-p`/`-m`, argument
   files, `-Dfabric.addMods`, `-Dorg.lwjgl.*`, JMX) in any spelling. A crash file is opened only if it's the shown crash's
   own report or JVM log.
+- Mods: the page names a mod by its file name only, checked against the folder listing; it never
+  passes a path that is loaded, run or copied. Dropped files are turned into paths in the preload
+  (a `File` made by script has none) and each is checked again in the main process: a regular
+  `.jar` file outside the launcher's folder, at most 256 MB, that is a Fabric mod and not one the
+  launcher provides itself. It is copied from one open handle, so what was checked is what lands
+  in `mods/`. The page can't start a download (`will-download` is cancelled).
+- Profiles: only known fields are read from the page; JVM arguments are confirmed per profile as
+  above; deleting a folder outright needs a native confirmation.
 - Quitting while the game runs asks first (macOS Cmd+Q); starting Wave Client again, or the
   Dock icon, brings the window back.
 - Tokens: never sent to the renderer, never logged (redacted from game output and errors),
