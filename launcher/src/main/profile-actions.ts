@@ -69,7 +69,6 @@ export class ProfileActions {
 
       if (from && what) {
         await rm(staging, { recursive: true, force: true })
-        await mkdir(staging, { recursive: true })
 
         try {
           // The source's mods don't change while they are copied.
@@ -212,8 +211,11 @@ export class ProfileActions {
     return profile
   }
 
+  /** Copies into `target`, which doesn't exist yet and exists afterwards. */
   private async copyFolder(source: string, target: string, what: 'settings' | 'everything', worlds: boolean): Promise<void> {
     if (what === 'settings') {
+      await mkdir(target, { recursive: true })
+
       for (const item of SETTINGS_FILES) {
         const from = join(source, item)
 
@@ -227,9 +229,11 @@ export class ProfileActions {
     }
 
     if (!(await stat(source).then((info) => info.isDirectory(), () => false))) {
+      await mkdir(target, { recursive: true })
       return
     }
 
+    // Node 22's cp refuses a target folder that already exists (with errorOnExist), so it creates it.
     await cp(source, target, {
       recursive: true,
       errorOnExist: true,
