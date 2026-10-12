@@ -76,10 +76,11 @@ export async function renameNoClobber(dir: string, from: string, to: string): Pr
       throw new FileExistsError(to)
     }
 
+    let linked = false
+
     try {
       await link(source, target)
-      await unlink(source)
-      return
+      linked = true
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
 
@@ -94,6 +95,18 @@ export async function renameNoClobber(dir: string, from: string, to: string): Pr
       if (await stat(target).then(() => true, () => false)) {
         throw new FileExistsError(to)
       }
+    }
+
+    if (linked) {
+      try {
+        await unlink(source)
+      } catch (error) {
+        // The old name is held open (Windows): drop the new name again so the mod keeps one name.
+        await unlink(target).catch(() => {})
+        throw error
+      }
+
+      return
     }
   }
 
