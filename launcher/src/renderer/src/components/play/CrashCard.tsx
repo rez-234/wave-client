@@ -57,7 +57,14 @@ export function CrashCard({
 
       {suspects.length > 0 && (
         <div className="suspects">
-          <p className="suspects__label">{suspects.length === 1 ? 'Suspected mod' : 'Suspected mods'}</p>
+          <div className="suspects__head">
+            <p className="suspects__label">{suspects.length === 1 ? 'Suspected mod' : 'Suspected mods'}</p>
+            {onReviewMods && (
+              <Button variant="ghost" size="sm" onClick={onReviewMods}>
+                Review mods
+              </Button>
+            )}
+          </div>
           <ul className="suspect-list">
             {suspects.map(({ suspect, mod }, i) => (
               <li key={`${suspect.id}-${i}`} className="suspect">
@@ -101,11 +108,6 @@ export function CrashCard({
         {crash && (
           <Button variant="secondary" icon={copied ? 'check' : 'copy'} onClick={onCopyDetails}>
             {copied ? 'Copied' : 'Copy details'}
-          </Button>
-        )}
-        {onReviewMods && (
-          <Button variant="secondary" icon="layers" onClick={onReviewMods}>
-            Review mods
           </Button>
         )}
         <span className="spacer" />

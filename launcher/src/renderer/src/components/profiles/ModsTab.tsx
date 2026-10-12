@@ -57,6 +57,7 @@ export function ModsTab({ info, profile, initialProblemsOnly, onToast, report }:
   const included = useMemo(() => (mods && !problemsOnly ? mods.included.filter((mod) => matchesIncludedQuery(mod, query)) : []), [mods, query, problemsOnly])
   const problemCount = mods ? problemModCount(mods.mods) : 0
   const summary = mods ? modsSummary(mods.mods) : null
+  const empty = mods !== null && mods.mods.length === 0
 
   const setEnabled = useCallback(
     (key: string, enabled: boolean) => {
@@ -159,7 +160,6 @@ export function ModsTab({ info, profile, initialProblemsOnly, onToast, report }:
 
   // A folder that can't be used also comes as a profile problem, which says it already.
   const note = mods && mods.profileProblems.length === 0 ? folderNote(mods.folder) : null
-  const empty = mods !== null && mods.mods.length === 0
 
   return (
     <div className={`mods${dragging ? ' mods--dragging' : ''}`} {...dropProps}>
@@ -210,7 +210,7 @@ export function ModsTab({ info, profile, initialProblemsOnly, onToast, report }:
         </Button>
       </div>
 
-      {summary && (
+      {summary && !empty && (
         <p className="mods__summary" role="status">
           <span>{summary.text}</span>
           {summary.errors && (
@@ -297,8 +297,10 @@ export function ModsTab({ info, profile, initialProblemsOnly, onToast, report }:
 
       {dragging && (
         <div className="mods__drop" aria-hidden="true">
-          <Icon name="upload" size={28} />
-          <p>Drop to add to {profile.name}</p>
+          <div className="mods__drop-message">
+            <Icon name="upload" size={28} />
+            <p>Drop to add to {profile.name}</p>
+          </div>
         </div>
       )}
 

@@ -254,9 +254,10 @@ describe('turning mods off', () => {
 
 describe('row and folder states', () => {
   it('says when a mod is off or will not load', () => {
-    expect(modStateText({ enabled: false, loads: false })).toBe('Turned off')
-    expect(modStateText({ enabled: true, loads: false })).toBe("Won't load")
-    expect(modStateText({ enabled: true, loads: true })).toBeNull()
+    expect(modStateText({ enabled: false, loads: false, problems: [] })).toBe('Turned off')
+    expect(modStateText({ enabled: true, loads: false, problems: [warning] })).toBe('Not loaded')
+    expect(modStateText({ enabled: true, loads: false, problems: [error] })).toBeNull()
+    expect(modStateText({ enabled: true, loads: true, problems: [] })).toBeNull()
   })
 
   it('explains folders that are not normal', () => {

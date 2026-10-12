@@ -276,13 +276,17 @@ export async function turnOffModsWithErrors(
   return { report, turnedOff }
 }
 
-/** What a row says about its state, besides its problems: null for a mod that's on and loads. */
-export function modStateText(mod: Pick<ModView, 'enabled' | 'loads'>): string | null {
+/**
+ * What a row says about its state, besides its problems: "Turned off", or "Not loaded" for a jar
+ * that's on but that Fabric skips (a Forge jar, an unused older copy). Null when it loads, or when an
+ * error already says why it can't.
+ */
+export function modStateText(mod: Pick<ModView, 'enabled' | 'loads' | 'problems'>): string | null {
   if (!mod.enabled) {
     return 'Turned off'
   }
 
-  return mod.loads ? null : "Won't load"
+  return mod.loads || mod.problems.some((problem) => problem.severity === 'error') ? null : 'Not loaded'
 }
 
 /** What the mods tab says about the profile's mods folder when it isn't a normal folder. */

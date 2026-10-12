@@ -1539,8 +1539,15 @@ pre,
   margin-top: var(--space-1);
 }
 
-.suspects__label {
+.suspects__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
   margin-bottom: 6px;
+}
+
+.suspects__label {
   color: var(--color-text-muted);
   font-size: 12px;
   font-weight: 600;
@@ -2234,8 +2241,7 @@ pre,
 }
 
 .badge--muted {
-  border-color: var(--color-warn-border);
-  color: var(--color-warn);
+  background: var(--color-surface-raised);
 }
 
 .badge--live {
@@ -2630,7 +2636,7 @@ pre,
 }
 
 .mods__search {
-  flex: 1 1 180px;
+  flex: 1 1 140px;
   max-width: 300px;
 }
 
@@ -2733,18 +2739,24 @@ pre,
   position: absolute;
   inset: 0;
   z-index: 10;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
   border: 2px dashed var(--color-accent);
   border-radius: var(--radius-medium);
   background: color-mix(in srgb, var(--color-background) 88%, var(--color-accent));
+  pointer-events: none;
+}
+
+/* The message stays in view however far the list is scrolled. */
+.mods__drop-message {
+  position: sticky;
+  top: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: 120px;
   color: var(--color-text);
   font-size: 15px;
   font-weight: 600;
-  pointer-events: none;
 }
 
 .mods__drop .icon {
@@ -2951,7 +2963,10 @@ pre,
   cursor: default;
 }
 
+/* Sized by its text (a shrinkable flex item came out a few pixels short and cut the name), with a cap for long names. */
 .profile-picker__name {
+  flex: none;
+  max-width: min(560px, calc(100vw - var(--sidebar-width) - 180px));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
