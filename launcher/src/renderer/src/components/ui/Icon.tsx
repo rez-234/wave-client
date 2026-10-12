@@ -16,6 +16,23 @@ const PATHS = {
   ),
   chevronUpDown: <path d="m8 9 4-4 4 4M8 15l4 4 4-4" />,
   chevronRight: <path d="m9 6 6 6-6 6" />,
+  chevronLeft: <path d="m15 6-6 6 6 6" />,
+  chevronDown: <path d="m6 9.5 6 6 6-6" />,
+  layers: (
+    <>
+      <path d="m12 4 8.5 4.5L12 13 3.5 8.5 12 4Z" strokeLinejoin="round" />
+      <path d="m3.5 12.5 8.5 4.5 8.5-4.5M3.5 16.5 12 21l8.5-4.5" strokeLinejoin="round" />
+    </>
+  ),
+  more: <path d="M6 12h.01M12 12h.01M18 12h.01" strokeWidth={2.75} />,
+  trash: (
+    <>
+      <path d="M4.5 7h15M9.5 7V5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v2M6.5 7l.8 11.6a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4L17.5 7" strokeLinejoin="round" />
+      <path d="M10 11v5.5M14 11v5.5" />
+    </>
+  ),
+  pencil: <path d="m14.5 6 3.5 3.5M5 19l1-4.5L16 4.5a1.5 1.5 0 0 1 2.1 0l1.4 1.4a1.5 1.5 0 0 1 0 2.1L9.5 18 5 19Z" strokeLinejoin="round" />,
+  upload: <path d="M12 15.5V4.5M7 9l5-5 5 5M5 19.5h14" />,
   check: <path d="m5 12.5 4.5 4.5L19 7.5" />,
   copy: (
     <>

@@ -6,10 +6,11 @@ import { AccountSwitcher } from './AccountSwitcher'
 import { Icon, type IconName } from './ui/Icon'
 import { LogoMark } from './ui/Logo'
 
-export type View = 'play' | 'logs' | 'settings'
+export type View = 'play' | 'profiles' | 'logs' | 'settings'
 
 const NAV: ReadonlyArray<{ view: View; label: string; icon: IconName }> = [
   { view: 'play', label: 'Play', icon: 'play' },
+  { view: 'profiles', label: 'Profiles', icon: 'layers' },
   { view: 'logs', label: 'Logs', icon: 'logs' },
   { view: 'settings', label: 'Settings', icon: 'settings' }
 ]

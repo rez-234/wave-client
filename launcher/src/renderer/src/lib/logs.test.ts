@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { LogLevel, LogLine } from '@shared/ipc'
 
-import { filterLogLines, formatLogLine, formatLogText, isLevelFilter, levelTone, matchesLogFilter, mergeLogLines, startsLaunch, visibleWindow } from './logs'
+import { filterLogLines, formatLogLine, formatLogText, isLevelFilter, launchLabel, levelTone, matchesLogFilter, mergeLogLines, startsLaunch, visibleWindow } from './logs'
 
 const line = (seq: number, patch: Partial<LogLine> = {}): LogLine => ({
   seq,
@@ -118,6 +118,14 @@ describe('formatting', () => {
     expect(startsLaunch(line(2, { session: 2 }), line(1, { session: 1 }))).toBe(true)
     expect(startsLaunch(line(2, { session: 2 }), undefined)).toBe(false)
     expect(startsLaunch(line(2), line(1))).toBe(false)
+  })
+
+  it('names the profile a launch played', () => {
+    expect(launchLabel(line(2, { session: 3, profile: 'PvP' }))).toBe('Launch 3 · PvP')
+    expect(launchLabel(line(2, { session: 3, profile: '  ' }))).toBe('Launch 3')
+    expect(launchLabel(line(2, { session: 3 }))).toBe('Launch 3')
+    const text = formatLogText([line(1, { session: 1, profile: 'Default' }), line(2, { session: 2, profile: 'PvP' })]).split('\n')
+    expect(text[1]).toBe('---- Launch 2 · PvP ----')
   })
 
   it('maps levels to colors', () => {

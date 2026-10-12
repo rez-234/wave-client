@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 
-import type { LauncherSettings } from '@shared/ipc'
-
 import { SettingRow } from './SettingRow'
 
 interface JvmArgsSettingProps {
   jvmArgs: string
   disabled: boolean
-  onSave: (jvmArgs: string) => Promise<LauncherSettings | null>
+  /** Resolves to what was saved, or null when it wasn't (declined in the confirmation, or failed). */
+  onSave: (jvmArgs: string) => Promise<{ jvmArgs: string } | null>
 }
 
 /** Extra arguments for Java, applied when the field loses focus or on Enter. Escape undoes the edit. */

@@ -1,14 +1,24 @@
 import type { JSX } from 'react'
 
-import type { CrashFileKind, CrashSummary } from '@shared/ipc'
+import type { CrashFileKind, CrashSummary, ModView } from '@shared/ipc'
 
-import { suspectName } from '../../lib/play'
+import { suspectName, type SuspectMatch } from '../../lib/play'
 import { Button } from '../ui/Button'
 import { Icon } from '../ui/Icon'
 
 interface CrashCardProps {
+  /** "PvP crashed". */
+  title: string
   crash: CrashSummary | undefined
   exitCode: number | null | undefined
+  /** The suspects, each with the mod in the crashed profile it points to (if any). */
+  suspects: SuspectMatch[]
+  /** Keys of mods being turned on or off. */
+  pendingKeys: ReadonlySet<string>
+  /** "Play again", or "Play Survival" when another profile is selected now. */
+  playLabel: string
+  onToggleMod: (mod: ModView, enabled: boolean) => void
+  onReviewMods: (() => void) | null
   onPlayAgain: () => void
   onShowLogs: () => void
   onOpenFile: (kind: CrashFileKind) => void
@@ -17,10 +27,16 @@ interface CrashCardProps {
   playDisabled: boolean
 }
 
-/** Why the game crashed, which mods might be to blame, and what to do next. */
+/** Why the game crashed, which mods might be to blame (with a switch for each), and what to do next. */
 export function CrashCard({
+  title,
   crash,
   exitCode,
+  suspects,
+  pendingKeys,
+  playLabel,
+  onToggleMod,
+  onReviewMods,
   onPlayAgain,
   onShowLogs,
   onOpenFile,
@@ -28,14 +44,12 @@ export function CrashCard({
   copied,
   playDisabled
 }: CrashCardProps): JSX.Element {
-  const suspects = crash?.suspectedMods ?? []
-
   return (
     <section className="card status-card status-card--danger" role="alert" aria-labelledby="crash-title">
       <div className="status-card__head">
         <h2 id="crash-title" className="status-card__title status-card__title--danger">
           <Icon name="alert" size={18} />
-          Minecraft crashed
+          {title}
         </h2>
         {typeof exitCode === 'number' && <span className="status-card__meta">Exit code {exitCode}</span>}
       </div>
@@ -43,12 +57,35 @@ export function CrashCard({
 
       {suspects.length > 0 && (
         <div className="suspects">
-          <p className="suspects__label">{suspects.length === 1 ? 'Suspected mod' : 'Suspected mods'}</p>
-          <ul className="chips">
-            {suspects.map((mod) => (
-              <li key={mod.id} className="chip" title={mod.reason}>
-                {suspectName(mod)}
-                <span className="visually-hidden">: {mod.reason}</span>
+          <div className="suspects__head">
+            <p className="suspects__label">{suspects.length === 1 ? 'Suspected mod' : 'Suspected mods'}</p>
+            {onReviewMods && (
+              <Button variant="ghost" size="sm" onClick={onReviewMods}>
+                Review mods
+              </Button>
+            )}
+          </div>
+          <ul className="suspect-list">
+            {suspects.map(({ suspect, mod }, i) => (
+              <li key={`${suspect.id}-${i}`} className="suspect">
+                <div className="suspect__text">
+                  <p className="suspect__name">
+                    {mod?.name ?? suspectName(suspect)}
+                    {mod && !mod.enabled && <span className="badge">Turned off</span>}
+                  </p>
+                  <p className="suspect__reason">{suspect.reason}</p>
+                </div>
+                {mod && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={pendingKeys.has(mod.key)}
+                    aria-label={`${mod.enabled ? 'Turn off' : 'Turn on'} ${mod.name}`}
+                    onClick={() => onToggleMod(mod, !mod.enabled)}
+                  >
+                    {mod.enabled ? 'Turn off' : 'Turn on'}
+                  </Button>
+                )}
               </li>
             ))}
           </ul>
@@ -75,7 +112,7 @@ export function CrashCard({
         )}
         <span className="spacer" />
         <Button variant="primary" icon="play" onClick={onPlayAgain} disabled={playDisabled}>
-          Play again
+          {playLabel}
         </Button>
       </div>
     </section>

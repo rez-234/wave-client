@@ -5,22 +5,28 @@ import type { AccountView, FolderKind } from '@shared/ipc'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { LoadingScreen } from './components/LoadingScreen'
 import { LogsView } from './components/logs/LogsView'
-import { PlayView } from './components/play/PlayView'
+import { PlayView, type LaunchOptions } from './components/play/PlayView'
+import { ProfilesView, type ProfilesRoute } from './components/profiles/ProfilesView'
 import { SettingsView } from './components/settings/SettingsView'
 import { Sidebar, type View } from './components/Sidebar'
 import { SignInPanel } from './components/sign-in/SignInPanel'
 import { Alert } from './components/ui/Alert'
+import { Toasts } from './components/ui/Toasts'
 import { useAlerts } from './hooks/useAlerts'
 import { useClipboard } from './hooks/useClipboard'
 import { useLauncherData } from './hooks/useLauncherData'
 import { useSignIn } from './hooks/useSignIn'
+import { useToasts } from './hooks/useToasts'
+import { selectedProfile } from './lib/profiles'
 import { describeProgress, isBusy } from './lib/progress'
 
 export function App(): JSX.Element {
   const { alerts, report, dismiss } = useAlerts()
   const data = useLauncherData(report)
   const signIn = useSignIn(report)
+  const toasts = useToasts()
   const [view, setView] = useState<View>('play')
+  const [profilesRoute, setProfilesRoute] = useState<ProfilesRoute>({ id: null, tab: 'mods' })
   const [signInOpen, setSignInOpen] = useState(false)
   /** The expired account being signed in again, for the panel's heading. */
   const [reauthName, setReauthName] = useState<string | null>(null)
@@ -44,7 +50,7 @@ export function App(): JSX.Element {
   }, [signInDone, accounts, resetSignIn])
 
   const launch = useCallback(
-    (options?: { repair?: boolean }) => {
+    (options?: LaunchOptions) => {
       setLaunching(true)
       setView('play')
       window.wave.game
@@ -84,11 +90,26 @@ export function App(): JSX.Element {
   const openFolder = useCallback((kind: FolderKind) => void window.wave.app.openFolder(kind).catch(report), [report])
   const openExternal = useCallback((url: string) => void window.wave.app.openExternal(url).catch(report), [report])
 
+  const openProfile = useCallback((route: ProfilesRoute) => {
+    setProfilesRoute(route)
+    setView('profiles')
+  }, [])
+
+  const navigate = useCallback((next: View) => {
+    // The Profiles item always leads to the list, like a fresh visit.
+    if (next === 'profiles') {
+      setProfilesRoute({ id: null, tab: 'mods' })
+    }
+
+    setView(next)
+  }, [])
+
   if (!data.info || !data.accountsLoaded) {
     return <LoadingScreen error={data.infoError} onRetry={data.retry} />
   }
 
   const info = data.info
+  const profile = selectedProfile(data.profiles)
   const busy = launching || isBusy(game.phase)
   const showSignIn = !signedIn || signInOpen || signInDone !== null
   const percent = game.phase === 'downloading' ? describeProgress(game.task).percent : null
@@ -96,7 +117,20 @@ export function App(): JSX.Element {
 
   let content: JSX.Element
 
-  if (view === 'logs') {
+  if (view === 'profiles') {
+    content = (
+      <ProfilesView
+        info={info}
+        profiles={data.profiles}
+        busy={busy}
+        route={profilesRoute}
+        onRoute={setProfilesRoute}
+        onProfileChanged={data.applyProfile}
+        onToast={toasts.show}
+        report={report}
+      />
+    )
+  } else if (view === 'logs') {
     content = <LogsView lines={data.logs} onExport={() => window.wave.logs.exportToFile()} onOpenFolder={() => openFolder('logs')} report={report} />
   } else if (view === 'settings') {
     content = (
@@ -111,6 +145,8 @@ export function App(): JSX.Element {
         onOpenFolder={openFolder}
         onAddAccount={() => openSignIn()}
         onSignOut={signOut}
+        onShowProfileSettings={() => profile && openProfile({ id: profile.id, tab: 'settings' })}
+        profileName={profile?.name ?? null}
         report={report}
       />
     )
@@ -140,12 +176,18 @@ export function App(): JSX.Element {
         launching={launching}
         settings={data.settings}
         settingsLoaded={data.settingsLoaded}
+        profiles={data.profiles}
+        profile={profile}
         onLaunch={launch}
         onSignInAgain={() => openSignIn(selected ?? undefined)}
         onCancel={() => void window.wave.game.cancel().catch(report)}
         onKill={() => void window.wave.game.kill().catch(report)}
         onShowLogs={() => setView('logs')}
         onShowSettings={() => setView('settings')}
+        onReviewMods={(id) => openProfile({ id, tab: 'mods', problemsOnly: true })}
+        onShowProfiles={() => navigate('profiles')}
+        onShowProfileSettings={(id) => openProfile({ id, tab: 'settings' })}
+        onToast={toasts.show}
         report={report}
       />
     )
@@ -155,7 +197,7 @@ export function App(): JSX.Element {
     <div className="app">
       <Sidebar
         view={view}
-        onNavigate={setView}
+        onNavigate={navigate}
         playBadge={playBadge}
         accounts={accounts}
         onSelectAccount={selectAccount}
@@ -173,6 +215,7 @@ export function App(): JSX.Element {
         <ErrorBoundary key={view} scope="page">
           {content}
         </ErrorBoundary>
+        <Toasts toasts={toasts.toasts} onDismiss={toasts.dismiss} />
       </main>
     </div>
   )
