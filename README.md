@@ -76,10 +76,22 @@ macOS, `~/.config/WaveClient` on Linux):
 |---|---|
 | `shared/versions`, `shared/libraries`, `shared/assets`, `shared/runtimes` | Minecraft, Fabric and Java, shared by all profiles |
 | `client/` | Wave Client and Fabric API, loaded with `-Dfabric.addMods` |
-| `instances/default/` | The game folder: saves, options, `mods/` for your own mods, logs, crash reports |
+| `instances/<profile>/` | Each profile's game folder: saves, options, `mods/` for your own mods, logs, crash reports |
+| `profiles.json` | Your profiles: name, Minecraft version, memory, JVM arguments |
 | `accounts.dat` | Signed-in accounts, encrypted with the OS keychain |
 | `launcher.json` | Launcher settings (no secrets) |
 | `logs/launcher.log` | The launcher's own log (never contains tokens) |
+
+### Profiles and your own mods
+
+A profile is a game folder with its own memory, JVM arguments and mods (the first one, Default,
+is created for you). **Profiles** lists them: create one (optionally copying settings, keybinds,
+servers and the HUD layout from another), duplicate, rename or delete one (it goes to the Recycle
+Bin/Trash). Open a profile to manage its mods: drop Fabric `.jar` files on the page or use **Add
+mods**, turn mods on or off (off = renamed to `.jar.disabled`), or remove them. Each mod shows
+problems inline, for example made for another Minecraft version or needing a mod that's missing,
+with a fix where there is one. Problems that would stop Fabric from starting stop Play too, until
+you fix them or choose **Play anyway**. Memory and JVM arguments are on the profile's Settings tab.
 
 ### Microsoft sign-in setup
 

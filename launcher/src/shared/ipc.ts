@@ -231,6 +231,8 @@ export type ModProblemCode =
   | 'disabled-dependency'
   | 'dependency-version'
   | 'breaks'
+  | 'folder'
+  | 'overrides'
   // warnings: the game starts; something may not work as expected
   | 'not-fabric'
   | 'case'
@@ -242,6 +244,7 @@ export type ModProblemCode =
   | 'unchecked'
   | 'copying'
   | 'unknown-dependency'
+  | 'custom-fabric-options'
 
 /** A one-click fix shown next to a problem: turn a mod on or off, or remove it. */
 export interface ModFix {

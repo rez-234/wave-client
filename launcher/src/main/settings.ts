@@ -16,14 +16,11 @@ export function memoryRangeMb(totalMemoryMb: number): { min: number; max: number
  * Cleans settings from disk or from the UI: unknown keys dropped, numbers clamped, wrong types
  * replaced by defaults. Never throws.
  */
-export function sanitizeSettings(input: unknown, totalMemoryMb: number, base: LauncherSettings = DEFAULT_SETTINGS): LauncherSettings {
+export function sanitizeSettings(input: unknown, base: LauncherSettings = DEFAULT_SETTINGS): LauncherSettings {
   const value = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>
-  const maxMemory = memoryRangeMb(totalMemoryMb).max
 
   return {
-    memoryMb: clampInt(value.memoryMb, MIN_MEMORY_MB, maxMemory, Math.min(base.memoryMb, maxMemory)),
     javaPath: typeof value.javaPath === 'string' && value.javaPath.trim().length > 0 ? value.javaPath.trim() : value.javaPath === null ? null : base.javaPath,
-    jvmArgs: typeof value.jvmArgs === 'string' ? value.jvmArgs.slice(0, MAX_JVM_ARGS_LENGTH) : base.jvmArgs,
     width: clampInt(value.width, 320, 16384, base.width),
     height: clampInt(value.height, 240, 16384, base.height),
     fullscreen: typeof value.fullscreen === 'boolean' ? value.fullscreen : base.fullscreen,
@@ -76,23 +73,23 @@ export function splitJvmArgs(text: string): string[] {
   return args
 }
 
-/** launcher.json: preferences only, never secrets. */
+/**
+ * launcher.json: launcher-wide preferences only, never secrets. (Memory and JVM arguments were
+ * kept here before profiles; index.ts hands them to the profile store before anything is saved.)
+ */
 export class SettingsStore {
   private current: LauncherSettings
   private writing: Promise<void> = Promise.resolve()
 
-  constructor(
-    private readonly file: string,
-    private readonly totalMemoryMb: number
-  ) {
-    this.current = sanitizeSettings({}, totalMemoryMb)
+  constructor(private readonly file: string) {
+    this.current = sanitizeSettings({})
   }
 
   async load(): Promise<LauncherSettings> {
     try {
-      this.current = sanitizeSettings(JSON.parse(await readFile(this.file, 'utf8')), this.totalMemoryMb)
+      this.current = sanitizeSettings(JSON.parse(await readFile(this.file, 'utf8')))
     } catch {
-      this.current = sanitizeSettings({}, this.totalMemoryMb)
+      this.current = sanitizeSettings({})
     }
 
     return this.get()
@@ -104,7 +101,7 @@ export class SettingsStore {
 
   async set(changes: unknown): Promise<LauncherSettings> {
     const patch = typeof changes === 'object' && changes !== null ? changes : {}
-    this.current = sanitizeSettings({ ...this.current, ...patch }, this.totalMemoryMb, this.current)
+    this.current = sanitizeSettings({ ...this.current, ...patch }, this.current)
     const saved = this.get()
     // One write at a time (quick changes overlap), each writing the settings as they are by then.
     const run = this.writing.then(

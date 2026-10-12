@@ -1,20 +1,21 @@
 import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 
 import { BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 
-import { IpcChannels, type AccountView, type AppInfo, type FolderKind, type JavaStatus, type LauncherSettings, type SignInEvent, type SignInMethod } from '@shared/ipc'
+import { IpcChannels, type AccountView, type AddModsResult, type AppInfo, type FolderKind, type JavaStatus, type LauncherSettings, type SignInEvent, type SignInMethod } from '@shared/ipc'
 
 import type { AccountStore } from './accounts/store'
 import { AuthError } from './auth/errors'
 import type { AuthService } from './auth/service'
 import { isAllowedExternalUrl } from './config'
 import { logText, type GameController } from './controller'
-import { isCrashFile } from './game/crash'
 import { probeJava } from './game/java'
 import { PINS } from './game/pins'
-import { instanceDir, type LauncherPaths } from './paths'
-import { riskyJvmArgs, splitJvmArgs, type SettingsStore } from './settings'
+import type { ModsService } from './mods/service'
+import type { LauncherPaths } from './paths'
+import type { ProfileActions } from './profile-actions'
+import type { SettingsStore } from './settings'
 
 export interface IpcDeps {
   window: () => BrowserWindow | null
@@ -26,11 +27,17 @@ export interface IpcDeps {
   auth: AuthService
   settings: SettingsStore
   game: GameController
+  profiles: ProfileActions
+  mods: ModsService
+  /** Sends the profile list to the window (mod counts and running state change it too). */
+  emitProfiles: () => void
   log: (message: string) => void
 }
 
 const ACCOUNT_ID = /^[0-9a-f]{32}$/
 const FOLDERS: FolderKind[] = ['game', 'mods', 'logs', 'crash-reports', 'screenshots', 'launcher']
+/** At most this many files per add. */
+const MAX_ADD = 500
 
 /**
  * Registers every handler. Calls from anything but the launcher's own page are refused. Returns
@@ -67,12 +74,12 @@ export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
 
   handle(IpcChannels.appInfo, () => deps.info())
 
-  handle(IpcChannels.openFolder, async (kind: unknown) => {
+  handle(IpcChannels.openFolder, async (kind: unknown, profileId: unknown) => {
     if (!FOLDERS.includes(kind as FolderKind)) {
       throw new Error('Unknown folder')
     }
 
-    const folder = folderPath(deps.paths, kind as FolderKind)
+    const folder = kind === 'launcher' ? deps.paths.root : folderPath(deps.profiles.gameDir(profileId), kind as Exclude<FolderKind, 'launcher'>)
     await mkdir(folder, { recursive: true })
     const problem = await shell.openPath(folder)
 
@@ -177,15 +184,6 @@ export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
       delete patch.javaPath
     }
 
-    if (typeof patch.jvmArgs === 'string') {
-      const before = new Set(riskyJvmArgs(splitJvmArgs(deps.settings.get().jvmArgs)))
-      const added = riskyJvmArgs(splitJvmArgs(patch.jvmArgs)).filter((arg) => !before.has(arg))
-
-      if (added.length > 0 && !(await confirmRiskyJvmArgs(deps.window(), added))) {
-        throw new Error("The JVM arguments weren't saved.")
-      }
-    }
-
     return deps.settings.set(patch)
   }
 
@@ -229,9 +227,9 @@ export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
   })
 
   handle(IpcChannels.gameLaunch, (options: unknown) => {
-    const repair = typeof options === 'object' && options !== null && (options as { repair?: unknown }).repair === true
+    const object = typeof options === 'object' && options !== null ? (options as { repair?: unknown; ignoreModProblems?: unknown }) : {}
     // Progress and errors arrive as state events; the call returns once it has finished or failed.
-    return deps.game.launch({ repair })
+    return deps.game.launch({ repair: object.repair === true, ignoreModProblems: object.ignoreModProblems === true })
   })
 
   handle(IpcChannels.gameCancel, () => deps.game.cancel())
@@ -244,10 +242,10 @@ export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
       throw new Error('Unknown file')
     }
 
-    // Only the paths of the crash being shown, and only the game's own crash files.
+    // Only the paths of the crash being shown, inside the game folder of the profile that crashed.
     const file = deps.game.crashFile(kind)
 
-    if (!file || !isCrashFile(folderPath(deps.paths, 'game'), file)) {
+    if (!file) {
       throw new Error("That file isn't available.")
     }
 
@@ -272,21 +270,98 @@ export function registerIpc(deps: IpcDeps): { emitAccounts: () => void } {
     return result.filePath
   })
 
+  handle(IpcChannels.profilesList, () => deps.profiles.views())
+  handle(IpcChannels.profilesCreate, (options: unknown) => deps.profiles.create(options))
+  handle(IpcChannels.profilesUpdate, (id: unknown, patch: unknown) => deps.profiles.update(id, patch))
+  handle(IpcChannels.profilesRemove, (id: unknown, options: unknown) => deps.profiles.remove(id, options))
+  handle(IpcChannels.profilesSelect, (id: unknown) => deps.profiles.select(id))
+
+  // Mod changes alter the profile list's mod counts.
+  const changed = <T>(result: T): T => {
+    deps.emitProfiles()
+    return result
+  }
+
+  handle(IpcChannels.modsList, (profileId: unknown) => deps.mods.report(profileIdOf(profileId)))
+
+  handle(IpcChannels.modsAdd, async (profileId: unknown): Promise<AddModsResult> => {
+    const id = profileIdOf(profileId)
+    const window = deps.window()
+    const options = {
+      title: 'Add mods',
+      buttonLabel: 'Add',
+      properties: ['openFile' as const, 'multiSelections' as const, 'dontAddToRecent' as const],
+      filters: [{ name: 'Fabric mods', extensions: ['jar'] }]
+    }
+    const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { added: [], skipped: [], report: await deps.mods.report(id) }
+    }
+
+    return changed(await deps.mods.add(id, result.filePaths.slice(0, MAX_ADD)))
+  })
+
+  handle(IpcChannels.modsAddDropped, async (profileId: unknown, paths: unknown) => {
+    // The preload resolved these from File objects the player dropped; each is checked again in add().
+    const list = Array.isArray(paths) ? paths.slice(0, MAX_ADD) : []
+    return changed(await deps.mods.add(profileIdOf(profileId), list))
+  })
+
+  handle(IpcChannels.modsSetEnabled, async (profileId: unknown, key: unknown, enabled: unknown) => {
+    if (typeof enabled !== 'boolean') {
+      throw new Error('Unknown mod')
+    }
+
+    return changed(await deps.mods.setEnabled(profileIdOf(profileId), key, enabled))
+  })
+
+  handle(IpcChannels.modsRemove, async (profileId: unknown, key: unknown) => changed(await deps.mods.remove(profileIdOf(profileId), key)))
+  handle(IpcChannels.modsIcon, (profileId: unknown, key: unknown) => deps.mods.icon(profileIdOf(profileId), key))
+
   return { emitAccounts }
+
+  function profileIdOf(value: unknown): string {
+    // Resolves to the stored id (or throws), so nothing else from the page reaches the file system.
+    return basename(deps.profiles.gameDir(value))
+  }
 }
 
 /** A native dialog, which script in the page can't answer. */
-async function confirmRiskyJvmArgs(window: BrowserWindow | null, args: string[]): Promise<boolean> {
+export async function confirmRiskyJvmArgs(window: BrowserWindow | null, profileName: string, args: string[]): Promise<boolean> {
   const options = {
     type: 'warning' as const,
     buttons: ['Cancel', 'Save anyway'],
     defaultId: 0,
     cancelId: 0,
-    message: 'These JVM arguments can run other programs or code on your computer',
+    message: `These JVM arguments for ${profileName} can run other programs or code on your computer`,
     detail: `${args.join('\n')}\n\nOnly save them if you added them yourself and trust where they came from.`
   }
   const { response } = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options)
   return response === 1
+}
+
+/** Asks before deleting a profile's folder outright (native, like above). */
+export async function confirmDeleteProfile(window: BrowserWindow | null, profileName: string, contents: { worlds: number; bytes: number }): Promise<boolean> {
+  const worlds = contents.worlds === 0 ? 'no worlds' : contents.worlds === 1 ? '1 world' : `${contents.worlds} worlds`
+  const options = {
+    type: 'warning' as const,
+    buttons: ['Cancel', 'Delete permanently'],
+    defaultId: 0,
+    cancelId: 0,
+    message: `Delete ${profileName} permanently?`,
+    detail: `Its folder (${worlds}, ${formatBytes(contents.bytes)}) will be deleted, not moved to the ${process.platform === 'win32' ? 'Recycle Bin' : 'Trash'}. This can't be undone.`
+  }
+  const { response } = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options)
+  return response === 1
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) {
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`
+  }
+
+  return bytes < 1024 ** 3 ? `${Math.round(bytes / 1024 ** 2)} MB` : `${(bytes / 1024 ** 3).toFixed(1)} GB`
 }
 
 function fromTrustedPage(event: IpcMainInvokeEvent, deps: IpcDeps): boolean {
@@ -295,15 +370,7 @@ function fromTrustedPage(event: IpcMainInvokeEvent, deps: IpcDeps): boolean {
   return window !== null && event.sender === window.webContents && frame !== null && frame === window.webContents.mainFrame && deps.isTrustedUrl(frame.url)
 }
 
-export function folderPath(paths: LauncherPaths, kind: FolderKind): string {
-  const game = instanceDir(paths, 'default')
-
-  switch (kind) {
-    case 'game':
-      return game
-    case 'launcher':
-      return paths.root
-    default:
-      return join(game, kind)
-  }
+/** A folder of a profile's game folder ('game' is the folder itself). */
+export function folderPath(gameDir: string, kind: Exclude<FolderKind, 'launcher'>): string {
+  return kind === 'game' ? gameDir : join(gameDir, kind)
 }
