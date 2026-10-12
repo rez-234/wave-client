@@ -76,6 +76,11 @@ export class GameController {
     return BUSY.has(this.state.phase) && this.profile?.id === profileId
   }
 
+  /** Whether the game is being prepared or started with this profile (its mods were checked, it doesn't run yet). */
+  isStartingWith(profileId: string): boolean {
+    return BUSY.has(this.state.phase) && this.state.phase !== 'running' && this.profile?.id === profileId
+  }
+
   get busy(): boolean {
     return BUSY.has(this.state.phase)
   }

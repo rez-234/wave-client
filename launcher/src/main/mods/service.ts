@@ -32,6 +32,11 @@ export interface ModsServiceDeps {
   profile: (id: string) => StoredProfile | undefined
   /** The game is starting or running with this profile (its jars may be open). */
   isRunning: (profileId: string) => boolean
+  /**
+   * The game is being prepared or started with this profile: its mods were already checked, so
+   * none may be added until it runs (Fabric would load them unchecked).
+   */
+  isStarting?: (profileId: string) => boolean
   bundledModJar: () => Promise<string>
   /** Moves a file or folder to the OS trash (shell.trashItem). */
   trash: (path: string) => Promise<void>
@@ -200,6 +205,10 @@ export class ModsService {
   add(profileId: string, sources: unknown[]): Promise<AddModsResult> {
     this.requireProfile(profileId)
     return this.exclusive(profileId, async () => {
+      if (this.deps.isStarting?.(profileId)) {
+        throw new Error('Minecraft is starting with this profile. Add the mods once it has started, or after it closes.')
+      }
+
       const dir = this.modsDir(profileId)
       const result: AddModsResult = { added: [], skipped: [], report: undefined as unknown as ModsReport }
 

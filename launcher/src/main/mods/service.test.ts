@@ -30,6 +30,7 @@ describe('ModsService', () => {
   let paths: LauncherPaths
   let mods: string
   let running: boolean
+  let starting: boolean
   let trashed: string[]
 
   beforeEach(async () => {
@@ -41,6 +42,7 @@ describe('ModsService', () => {
     await mkdir(paths.client, { recursive: true })
     await writeFile(join(paths.client, 'waveclient.jar'), fabricJar('waveclient', '0.4.0'))
     running = false
+    starting = false
     trashed = []
   })
 
@@ -52,7 +54,8 @@ describe('ModsService', () => {
     new ModsService({
       paths,
       profile: (id) => (id === 'default' ? PROFILE : undefined),
-      isRunning: () => running,
+      isRunning: () => running || starting,
+      isStarting: () => starting,
       bundledModJar: async () => join(paths.client, 'waveclient.jar'),
       trash: async (path) => {
         trashed.push(path)
@@ -155,6 +158,18 @@ describe('ModsService', () => {
     expect(report.mods).toEqual([])
     expect(trashed).toEqual([join(mods, 'lithium.jar')])
     await expect(ms.report('nope')).rejects.toThrow(/no longer exists/)
+  })
+
+  it("doesn't add mods while the game is starting with the profile, after its mods were checked", async () => {
+    const ms = service()
+    starting = true
+    await expect(ms.add('default', [await download('lithium.jar', fabricJar('lithium', '0.14.0'))])).rejects.toThrow(/starting/)
+    expect(await readdir(mods).catch(() => [])).toEqual([])
+
+    // Once it runs, an added mod is for next time.
+    starting = false
+    running = true
+    expect((await ms.add('default', [await download('sodium.jar', fabricJar('sodium', '0.6.0'))])).added).toHaveLength(1)
   })
 
   it('refuses to turn a mod on over another file', async () => {

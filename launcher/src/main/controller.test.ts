@@ -134,8 +134,13 @@ describe('GameController', () => {
     await vi.waitFor(() => expect(prepareGame).toHaveBeenCalled())
     // Changed while it starts: applies next time.
     await profiles.update('pvp', { memoryMb: 8192 })
+    // Its mods were checked: none may be added until it runs.
+    expect(ctl.isStartingWith('pvp')).toBe(true)
+    expect(ctl.isStartingWith('default')).toBe(false)
     release()
     await launching
+    expect(ctl.isStartingWith('pvp')).toBe(false)
+    expect(ctl.isBusyWith('pvp')).toBe(true)
 
     const command = started[0]!['command'] as { args: string[] }
     expect(command.args).toEqual(expect.arrayContaining(['-Xmx2048M', '-Xss4M']))
