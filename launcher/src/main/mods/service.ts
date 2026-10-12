@@ -100,31 +100,14 @@ export class ModsService {
   async report(profileId: string): Promise<ModsReport> {
     const profile = this.requireProfile(profileId)
     const { scan, analysis, included } = await this.analyze(profile)
-    return this.toReport(profile, scan, analysis, included)
+    const report = this.toReport(profile, scan, analysis, included)
+    report.playAnywayAccepted = report.errors > 0 && blockingErrors(report).hash === profile.playAnyway
+    return report
   }
 
   /** Errors that should stop a launch of this profile. */
   async launchCheck(profileId: string): Promise<LaunchCheck> {
-    const report = await this.report(profileId)
-    const errors: Array<{ key: string; name: string; message: string; code: string }> = []
-
-    for (const problem of report.profileProblems) {
-      if (problem.severity === 'error') {
-        errors.push({ key: '', name: 'Mods folder', message: problem.message, code: problem.code })
-      }
-    }
-
-    for (const mod of report.mods) {
-      for (const problem of mod.problems) {
-        if (problem.severity === 'error') {
-          errors.push({ key: mod.key, name: mod.name, message: problem.message, code: problem.code })
-        }
-      }
-    }
-
-    const hash = createHash('sha1')
-      .update(errors.map((e) => `${e.key}:${e.code}`).sort().join('\n'))
-      .digest('hex')
+    const { errors, hash } = blockingErrors(await this.report(profileId))
     // One entry per mod (the folder counts as one): the card says "2 mods have problems".
     const firstPerMod = errors.filter((error, index) => errors.findIndex((other) => other.key === error.key) === index)
     return { errors: firstPerMod.length, mods: firstPerMod.slice(0, 3).map(({ key, name, message }) => ({ key, name, message })), hash }
@@ -479,7 +462,8 @@ export class ModsService {
       included: included.filter((mod) => mod.id !== 'fabricloader').map((mod): IncludedMod => ({ id: mod.id, name: mod.name, version: mod.version })),
       profileProblems,
       errors,
-      warnings: analysis.warnings
+      warnings: analysis.warnings,
+      playAnywayAccepted: false
     }
   }
 
@@ -542,6 +526,30 @@ function softenJavaErrors(analysis: ModAnalysis): void {
   const all = [...analysis.profileProblems, ...[...analysis.mods.values()].flatMap((result) => result.problems)]
   analysis.errors = all.filter((problem) => problem.severity === 'error').length
   analysis.warnings = all.length - analysis.errors
+}
+
+/** The errors that stop a launch, and a hash identifying exactly that set (for Play anyway). */
+function blockingErrors(report: ModsReport): { errors: Array<{ key: string; name: string; message: string; code: string }>; hash: string } {
+  const errors: Array<{ key: string; name: string; message: string; code: string }> = []
+
+  for (const problem of report.profileProblems) {
+    if (problem.severity === 'error') {
+      errors.push({ key: '', name: 'Mods folder', message: problem.message, code: problem.code })
+    }
+  }
+
+  for (const mod of report.mods) {
+    for (const problem of mod.problems) {
+      if (problem.severity === 'error') {
+        errors.push({ key: mod.key, name: mod.name, message: problem.message, code: problem.code })
+      }
+    }
+  }
+
+  const hash = createHash('sha1')
+    .update(errors.map((e) => `${e.key}:${e.code}`).sort().join('\n'))
+    .digest('hex')
+  return { errors, hash }
 }
 
 async function sha1(path: string): Promise<string> {

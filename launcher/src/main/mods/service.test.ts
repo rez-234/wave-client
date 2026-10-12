@@ -32,6 +32,7 @@ describe('ModsService', () => {
   let running: boolean
   let starting: boolean
   let trashed: string[]
+  let profile: StoredProfile
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'wave-mods-'))
@@ -44,6 +45,7 @@ describe('ModsService', () => {
     running = false
     starting = false
     trashed = []
+    profile = { ...PROFILE }
   })
 
   afterEach(async () => {
@@ -53,7 +55,7 @@ describe('ModsService', () => {
   const service = () =>
     new ModsService({
       paths,
-      profile: (id) => (id === 'default' ? PROFILE : undefined),
+      profile: (id) => (id === 'default' ? profile : undefined),
       isRunning: () => running || starting,
       isStarting: () => starting,
       bundledModJar: async () => join(paths.client, 'waveclient.jar'),
@@ -195,6 +197,13 @@ describe('ModsService', () => {
     const second = await ms.launchCheck('default')
     expect(second.errors).toBe(1)
     expect(second.hash).not.toBe(first.hash)
+
+    // The report says when the player chose Play anyway for exactly these errors.
+    expect((await ms.report('default')).playAnywayAccepted).toBe(false)
+    profile.playAnyway = second.hash
+    expect((await ms.report('default')).playAnywayAccepted).toBe(true)
+    profile.playAnyway = first.hash
+    expect((await ms.report('default')).playAnywayAccepted).toBe(false)
 
     await ms.setEnabled('default', 'menu.jar', false)
     expect((await ms.launchCheck('default')).errors).toBe(0)

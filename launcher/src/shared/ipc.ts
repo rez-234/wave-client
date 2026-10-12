@@ -311,6 +311,8 @@ export interface ModsReport {
   /** Errors across the profile (mods and profile-level): the launch stops while there are any. */
   errors: number
   warnings: number
+  /** The player chose Play anyway for exactly these errors: they don't stop Play until they change. */
+  playAnywayAccepted: boolean
 }
 
 export type AddSkipReason =

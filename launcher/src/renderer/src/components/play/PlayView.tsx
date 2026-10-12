@@ -86,7 +86,7 @@ export function PlayView(props: PlayViewProps): JSX.Element {
   const { reload: reloadSelected } = selectedMods
   /** The profile Play launches right now, for a fix-and-play that finishes after the player switched. */
   const selectedRef = useRef(selectedId)
-  /** Per profile, the errors the player chose Play anyway for (this session); the heads-up card then says so. */
+  /** Per profile, the errors the player just chose Play anyway for, until the report (playAnywayAccepted) catches up. */
   const [acceptedProblems, setAcceptedProblems] = useState<ReadonlyMap<string, string>>(new Map())
 
   useEffect(() => {
@@ -100,7 +100,10 @@ export function PlayView(props: PlayViewProps): JSX.Element {
   const blocked = game.phase === 'failed' && game.modProblems && game.modProblems.profileId === selectedId ? game.modProblems : null
   const heads = selectedMods.report && !busy && !blocked && game.phase !== 'crashed' ? blockingSummary(selectedMods.report) : null
   const suspects = useMemo(() => matchSuspects(game.crash?.suspectedMods ?? [], crashedMods.report?.mods ?? null), [game.crash, crashedMods.report])
-  const headsAccepted = heads !== null && selectedMods.report !== null && acceptedProblems.get(selectedMods.report.profileId) === blockingSignature(selectedMods.report)
+  const headsAccepted =
+    heads !== null &&
+    selectedMods.report !== null &&
+    (selectedMods.report.playAnywayAccepted || acceptedProblems.get(selectedMods.report.profileId) === blockingSignature(selectedMods.report))
   const playDisabled = button.disabled || button.action !== 'play'
 
   const playAnyway = (): void => {

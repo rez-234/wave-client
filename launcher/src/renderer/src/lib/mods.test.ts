@@ -58,7 +58,8 @@ const report = (mods: ModView[]): ModsReport => ({
   included: [],
   profileProblems: [],
   errors: 0,
-  warnings: 0
+  warnings: 0,
+  playAnywayAccepted: false
 })
 
 describe('sorting and filtering', () => {
