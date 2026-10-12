@@ -47,7 +47,7 @@ win:
 
 nsis:
   artifactName: WaveClient-Setup-${version}.${ext}
-  # Assisted installer: "Only for me" is the default (%LOCALAPPDATA%\Programs\Wave Client, no
+  # Assisted installer: "Only for me" is the default (%LOCALAPPDATA%\Programs\WaveClient, no
   # admin prompt); the folder can be changed.
   oneClick: false
   perMachine: false

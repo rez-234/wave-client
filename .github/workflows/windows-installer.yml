@@ -87,10 +87,10 @@ jobs:
           $entry = Entry
           if (-not $entry) { throw 'No Apps & features entry' }
           $entry | Format-List DisplayName, DisplayVersion, Publisher, InstallLocation, UninstallString, QuietUninstallString
-          # Per user, the folder is under the user's own programs folder (normally %LOCALAPPDATA%\Programs).
-          $installDir = $entry.InstallLocation.TrimEnd('\')
-          if ($installDir -notlike "$env:LOCALAPPDATA\*") { throw "Not installed for the current user: $installDir" }
-          if ((Split-Path $installDir -Leaf) -ne 'Wave Client') { throw "Unexpected install folder name: $installDir" }
+          # The uninstaller sits in the install folder: per user, %LOCALAPPDATA%\Programs\WaveClient.
+          if ($entry.UninstallString -notmatch '^"([^"]+)"') { throw "Unexpected UninstallString: $($entry.UninstallString)" }
+          $installDir = Split-Path $Matches[1] -Parent
+          if ($installDir -ne "$env:LOCALAPPDATA\Programs\WaveClient") { throw "Not installed in the user's own programs folder: $installDir" }
           foreach ($path in "$installDir\WaveClient.exe", "$installDir\resources\app.asar", "$installDir\resources\mod", $startMenu, $desktop) {
             if (-not (Test-Path $path)) { throw "Missing after install: $path" }
           }

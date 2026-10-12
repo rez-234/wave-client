@@ -308,7 +308,7 @@ initializes.
 `.github/workflows/windows-installer.yml` and `release.yml`.
 
 - electron-builder NSIS target produces `WaveClient-Setup-<version>.exe`.
-- Per-user install by default, so no admin prompt. Location is `%LOCALAPPDATA%\Programs\Wave Client`.
+- Per-user install by default, so no admin prompt. Location is `%LOCALAPPDATA%\Programs\WaveClient`.
 - Creates Start menu and desktop shortcuts and registers an uninstaller in "Apps & features".
   Uninstalling a per-user install asks whether to also remove the game data in
   `%APPDATA%\WaveClient` (default No); updates (a newer installer over an older one), silent

@@ -17,7 +17,7 @@ for the full design.
 
 Download `WaveClient-Setup-<version>.exe` from the repository's Releases page (or from the
 `WaveClient-Setup` artifact of a CI run) and run it. It installs for your Windows user only, so
-it doesn't ask for administrator rights, into `%LOCALAPPDATA%\Programs\Wave Client` (you can
+it doesn't ask for administrator rights, into `%LOCALAPPDATA%\Programs\WaveClient` (you can
 pick another folder), and adds Wave Client to the Start menu and the desktop. Open Wave Client,
 sign in with your Microsoft account and press Play: the first launch downloads Minecraft,
 Fabric and Java from Mojang's and Fabric's servers.
