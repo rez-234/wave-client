@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type JSX } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react'
 
 import type { AccountView, AppInfo, GameState, LauncherSettings, ModView, ProfileView } from '@shared/ipc'
 
 import { useClipboard } from '../../hooks/useClipboard'
 import { useModsReport } from '../../hooks/useModsReport'
-import { formatMemory, plural } from '../../lib/format'
-import { blockingSummary, turnOffModsWithErrors, type ToastContent } from '../../lib/mods'
+import { formatMemory } from '../../lib/format'
+import { blockingSignature, blockingSummary, canTurnOffAndPlay, turnOffModsWithErrors, turnOffOutcome, type ToastContent } from '../../lib/mods'
 import { crashDetailsText, crashTitle, exitNote, failedTitle, matchSuspects, playAgainLabel, playButtonModel } from '../../lib/play'
 import { profileDetail, versionLabel } from '../../lib/profiles'
 import { isBusy, phaseAnnouncement } from '../../lib/progress'
@@ -84,6 +84,14 @@ export function PlayView(props: PlayViewProps): JSX.Element {
   const [fixing, setFixing] = useState(false)
   const [pendingKeys, setPendingKeys] = useState<ReadonlySet<string>>(new Set())
   const { reload: reloadSelected } = selectedMods
+  /** The profile Play launches right now, for a fix-and-play that finishes after the player switched. */
+  const selectedRef = useRef(selectedId)
+  /** Per profile, the errors the player chose Play anyway for (this session); the heads-up card then says so. */
+  const [acceptedProblems, setAcceptedProblems] = useState<ReadonlyMap<string, string>>(new Map())
+
+  useEffect(() => {
+    selectedRef.current = selectedId
+  }, [selectedId])
 
   useEffect(() => {
     reloadSelected()
@@ -92,7 +100,18 @@ export function PlayView(props: PlayViewProps): JSX.Element {
   const blocked = game.phase === 'failed' && game.modProblems && game.modProblems.profileId === selectedId ? game.modProblems : null
   const heads = selectedMods.report && !busy && !blocked && game.phase !== 'crashed' ? blockingSummary(selectedMods.report) : null
   const suspects = useMemo(() => matchSuspects(game.crash?.suspectedMods ?? [], crashedMods.report?.mods ?? null), [game.crash, crashedMods.report])
+  const headsAccepted = heads !== null && selectedMods.report !== null && acceptedProblems.get(selectedMods.report.profileId) === blockingSignature(selectedMods.report)
   const playDisabled = button.disabled || button.action !== 'play'
+
+  const playAnyway = (): void => {
+    const current = selectedMods.report
+
+    if (blocked && current?.profileId === blocked.profileId) {
+      setAcceptedProblems((map) => new Map(map).set(current.profileId, blockingSignature(current)))
+    }
+
+    onLaunch({ ignoreModProblems: true })
+  }
 
   const toggleSuspect = useCallback(
     (mod: ModView, enabled: boolean) => {
@@ -137,12 +156,16 @@ export function PlayView(props: PlayViewProps): JSX.Element {
         },
         (result) => result.report
       )
-      .then(({ turnedOff }) => {
-        if (turnedOff.length > 0) {
-          onToast({ tone: 'success', title: `Turned off ${plural(turnedOff.length, 'mod')} in ${name}`, lines: turnedOff.length <= 4 ? turnedOff : [...turnedOff.slice(0, 3), `And ${turnedOff.length - 3} more.`] })
+      .then((result) => {
+        const outcome = turnOffOutcome(result, name, selectedRef.current === id)
+
+        if (outcome.toast) {
+          onToast(outcome.toast)
         }
 
-        onLaunch()
+        if (outcome.launch) {
+          onLaunch()
+        }
       })
       .catch(report)
       .finally(() => setFixing(false))
@@ -158,7 +181,7 @@ export function PlayView(props: PlayViewProps): JSX.Element {
               profiles={profiles}
               selected={profile}
               versions={info.gameVersions}
-              busy={busy}
+              busy={busy || fixing}
               onSelect={(next) => {
                 if (!next.selected) {
                   window.wave.profiles.select(next.id).catch(report)
@@ -233,8 +256,8 @@ export function PlayView(props: PlayViewProps): JSX.Element {
           working={fixing}
           disabled={playDisabled}
           onReview={() => onReviewMods(blocked.profileId)}
-          onTurnOffAndPlay={turnOffAndPlay}
-          onPlayAnyway={() => onLaunch({ ignoreModProblems: true })}
+          onTurnOffAndPlay={canTurnOffAndPlay(selectedMods.report, blocked.profileId) ? turnOffAndPlay : undefined}
+          onPlayAnyway={playAnyway}
         />
       )}
 
@@ -244,6 +267,7 @@ export function PlayView(props: PlayViewProps): JSX.Element {
           profileName={profile.name}
           mods={heads.mods}
           blocked={false}
+          accepted={headsAccepted}
           working={false}
           disabled={playDisabled}
           onReview={() => onReviewMods(profile.id)}

@@ -4,13 +4,16 @@ import type { AddModsResult, ModProblem, ModView, ModsReport } from '@shared/ipc
 
 import {
   addResultToast,
+  blockingSignature,
   blockingSummary,
+  canTurnOffAndPlay,
   compareModVersions,
   folderNote,
   modStateText,
   modsWithErrors,
   problemsChipLabel,
   turnOffModsWithErrors,
+  turnOffOutcome,
   turnOffQuestion,
   matchesModQuery,
   modrinthSearchUrl,
@@ -249,6 +252,57 @@ describe('turning mods off', () => {
     const setEnabled = async (): Promise<ModsReport> => report([mod(`m${n++}.jar`, { problems: [error] })])
     const result = await turnOffModsWithErrors(report([mod('m.jar', { problems: [error] })]), setEnabled)
     expect(result.turnedOff).toHaveLength(5)
+  })
+})
+
+describe('after turning mods off', () => {
+  const profileError: ModProblem = { severity: 'error', code: 'unreadable', message: 'Bad overrides file.' }
+
+  it('plays when mods were turned off and the profile is still the one shown', () => {
+    const outcome = turnOffOutcome({ report: report([]), turnedOff: ['a', 'b'] }, 'PvP', true)
+    expect(outcome.launch).toBe(true)
+    expect(outcome.toast).toEqual({ tone: 'success', title: 'Turned off 2 mods in PvP', lines: ['a', 'b'] })
+  })
+
+  it("doesn't play another profile when the player switched profiles meanwhile", () => {
+    const outcome = turnOffOutcome({ report: report([]), turnedOff: ['a'] }, 'PvP', false)
+    expect(outcome.launch).toBe(false)
+    expect(outcome.toast?.title).toBe('Turned off 1 mod in PvP')
+  })
+
+  it("doesn't play again when only the profile's own problems are left", () => {
+    const left = { ...report([]), profileProblems: [profileError], errors: 1 }
+    const outcome = turnOffOutcome({ report: left, turnedOff: [] }, 'PvP', true)
+    expect(outcome.launch).toBe(false)
+    expect(outcome.toast).toEqual({
+      tone: 'warn',
+      title: 'No mods to turn off in PvP',
+      lines: ["The problems left are with the profile itself, not a mod. Review mods to see them, or choose Play anyway."]
+    })
+  })
+
+  it('plays when there was nothing left to turn off and nothing stops the launch', () => {
+    expect(turnOffOutcome({ report: report([]), turnedOff: [] }, 'PvP', true)).toEqual({ launch: true, toast: null })
+  })
+
+  it('offers "Turn them off and play" only when a turned-on mod has an error', () => {
+    const profileOnly = { ...report([mod('a.jar', { enabled: false, problems: [error] })]), profileProblems: [profileError], errors: 1 }
+    expect(canTurnOffAndPlay(profileOnly, 'pvp')).toBe(false)
+    expect(canTurnOffAndPlay({ ...profileOnly, mods: [mod('b.jar', { problems: [error] })] }, 'pvp')).toBe(true)
+    // Not read yet, or read for another profile: offer it; the outcome above handles an empty run.
+    expect(canTurnOffAndPlay(null, 'pvp')).toBe(true)
+    expect(canTurnOffAndPlay(profileOnly, 'other')).toBe(true)
+  })
+})
+
+describe('blockingSignature', () => {
+  it('names each error by mod and code, the same however the mods are ordered', () => {
+    const a = mod('a.jar', { problems: [error, warning] })
+    const b = mod('b.jar', { problems: [{ ...error, code: 'breaks' }] })
+    const r = { ...report([a, b]), profileProblems: [{ severity: 'error' as const, code: 'unreadable' as const, message: 'x' }] }
+    expect(blockingSignature(r)).toBe(':unreadable\na.jar:missing\nb.jar:breaks')
+    expect(blockingSignature({ ...r, mods: [b, a] })).toBe(blockingSignature(r))
+    expect(blockingSignature(report([b]))).not.toBe(blockingSignature(r))
   })
 })
 

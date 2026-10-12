@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 
-import { modProblemsTitle } from '../../lib/play'
+import { modProblemsText, modProblemsTitle } from '../../lib/play'
 import { Button } from '../ui/Button'
 import { Icon } from '../ui/Icon'
 
@@ -12,6 +12,8 @@ interface ModProblemsCardProps {
   mods: ReadonlyArray<{ key: string; name: string; message: string }>
   /** Set when Play was pressed and the launch stopped; otherwise the card is a heads-up before Play. */
   blocked: boolean
+  /** The player chose Play anyway for exactly these problems, so Play starts Minecraft regardless. */
+  accepted?: boolean
   /** A fix-and-play is under way. */
   working: boolean
   disabled: boolean
@@ -21,7 +23,7 @@ interface ModProblemsCardProps {
 }
 
 /** Mods that would stop (or just stopped) Minecraft from starting, with ways forward. Amber, not red: nothing broke yet. */
-export function ModProblemsCard({ count, profileName, mods, blocked, working, disabled, onReview, onTurnOffAndPlay, onPlayAnyway }: ModProblemsCardProps): JSX.Element {
+export function ModProblemsCard({ count, profileName, mods, blocked, accepted = false, working, disabled, onReview, onTurnOffAndPlay, onPlayAnyway }: ModProblemsCardProps): JSX.Element {
   const more = count - mods.length
 
   return (
@@ -33,7 +35,7 @@ export function ModProblemsCard({ count, profileName, mods, blocked, working, di
         </h2>
       </div>
       <p className="status-card__text">
-        {blocked ? "Minecraft didn't start because these mods would stop it from loading." : 'Minecraft won\'t start until these are fixed.'}
+        {modProblemsText(blocked, accepted)}
       </p>
       {mods.length > 0 && (
         <ul className="problem-list">

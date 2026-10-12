@@ -108,6 +108,15 @@ export function modProblemsTitle(count: number, profileName: string | null): str
   return count === 1 ? `1 mod${where} has a problem` : `${plural(count, 'mod')}${where} have problems`
 }
 
+/** The mod-problems card's text: after a stopped launch, before Play, or once Play anyway was chosen for these problems. */
+export function modProblemsText(blocked: boolean, accepted: boolean): string {
+  if (blocked) {
+    return "Minecraft didn't start because these mods would stop it from loading."
+  }
+
+  return accepted ? 'You chose Play anyway for these problems. Minecraft will try to start, but it may not load.' : "Minecraft won't start until these are fixed."
+}
+
 /** The crash card's heading names the profile that crashed. */
 export function crashTitle(state: Pick<GameState, 'profile'>): string {
   return state.profile ? `${state.profile.name} crashed` : 'Minecraft crashed'
