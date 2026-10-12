@@ -1,5 +1,6 @@
-import type { AccountView, CrashSummary, GamePhase, GameState, SuspectedMod } from '@shared/ipc'
+import type { AccountView, CrashSummary, GamePhase, GameState, ModView, SuspectedMod } from '@shared/ipc'
 
+import { plural } from './format'
 import { isBusy } from './progress'
 
 export interface PlayButtonModel {
@@ -68,4 +69,51 @@ export function crashDetailsText(crash: CrashSummary, minecraftVersion: string, 
   }
 
   return parts.join('\n\n')
+}
+
+export interface SuspectMatch {
+  suspect: SuspectedMod
+  /** The mod in the crashed profile it points to, or null (a built-in, a nested mod, or one that's gone). */
+  mod: ModView | null
+}
+
+/**
+ * Finds each suspect among the profile's mods: by file name first, then by mod id, then by a
+ * provided id, preferring a copy that loads. Each mod is matched once, so one jar doesn't get two
+ * "Turn off" buttons.
+ */
+export function matchSuspects(suspects: readonly SuspectedMod[], mods: readonly ModView[] | null): SuspectMatch[] {
+  const used = new Set<string>()
+  const loadsFirst = [...(mods ?? [])].sort((a, b) => Number(b.loads) - Number(a.loads))
+
+  return suspects.map((suspect) => {
+    const free = loadsFirst.filter((mod) => !used.has(mod.key))
+    const mod =
+      (suspect.file ? free.find((m) => m.file === suspect.file || m.key === suspect.file) : undefined) ??
+      free.find((m) => m.id === suspect.id) ??
+      free.find((m) => m.provides.includes(suspect.id)) ??
+      null
+
+    if (mod) {
+      used.add(mod.key)
+    }
+
+    return { suspect, mod }
+  })
+}
+
+/** "3 mods in PvP have problems", "1 mod in PvP has a problem". */
+export function modProblemsTitle(count: number, profileName: string | null): string {
+  const where = profileName ? ` in ${profileName}` : ''
+  return count === 1 ? `1 mod${where} has a problem` : `${plural(count, 'mod')}${where} have problems`
+}
+
+/** The crash card's heading names the profile that crashed. */
+export function crashTitle(state: Pick<GameState, 'profile'>): string {
+  return state.profile ? `${state.profile.name} crashed` : 'Minecraft crashed'
+}
+
+/** The failed card's heading. */
+export function failedTitle(state: Pick<GameState, 'profile'>): string {
+  return state.profile ? `${state.profile.name} couldn't start` : "Couldn't start Minecraft"
 }

@@ -151,6 +151,12 @@ export function startsLaunch(line: LogLine, previous: LogLine | undefined): bool
   return previous !== undefined && line.session !== undefined && line.session !== previous.session
 }
 
+/** "Launch 3 · PvP" (or "Launch 3" when the line doesn't say which profile played). */
+export function launchLabel(line: LogLine): string {
+  const profile = line.profile?.trim()
+  return `Launch ${line.session ?? ''}${profile ? ` · ${profile}` : ''}`
+}
+
 export function formatLogText(lines: readonly LogLine[]): string {
-  return lines.flatMap((line, i) => (startsLaunch(line, lines[i - 1]) ? [`---- Launch ${line.session} ----`, formatLogLine(line)] : [formatLogLine(line)])).join('\n')
+  return lines.flatMap((line, i) => (startsLaunch(line, lines[i - 1]) ? [`---- ${launchLabel(line)} ----`, formatLogLine(line)] : [formatLogLine(line)])).join('\n')
 }

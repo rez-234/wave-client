@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { DEFAULT_SETTINGS, type AccountView, type AppInfo, type GameState, type LauncherSettings, type LogLine } from '@shared/ipc'
+import { DEFAULT_SETTINGS, type AccountView, type AppInfo, type GameState, type LauncherSettings, type LogLine, type ProfileView } from '@shared/ipc'
 
 import { errorMessage } from '../lib/errors'
 import { mergeLogLines } from '../lib/logs'
@@ -13,6 +13,8 @@ export interface LauncherData {
   accountsLoaded: boolean
   settings: LauncherSettings
   settingsLoaded: boolean
+  profiles: ProfileView[]
+  profilesLoaded: boolean
   game: GameState
   logs: LogLine[]
 }
@@ -21,6 +23,8 @@ export interface LauncherDataApi extends LauncherData {
   retry: () => void
   /** Replaces the settings with the ones the main process returned (they are authoritative). */
   applySettings: (settings: LauncherSettings) => void
+  /** Puts a profile the main process returned (after a change) into the list right away. */
+  applyProfile: (profile: ProfileView) => void
 }
 
 /** Whether the preload bridge exists (it doesn't when the page is opened outside the launcher). */
@@ -39,6 +43,8 @@ export function useLauncherData(report: (error: unknown) => void): LauncherDataA
   const [accountsLoaded, setAccountsLoaded] = useState(false)
   const [settings, setSettings] = useState<LauncherSettings>(DEFAULT_SETTINGS)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
+  const [profiles, setProfiles] = useState<ProfileView[]>([])
+  const [profilesLoaded, setProfilesLoaded] = useState(false)
   const [game, setGame] = useState<GameState>({ phase: 'idle' })
   const [logs, setLogs] = useState<LogLine[]>([])
   const [attempt, setAttempt] = useState(0)
@@ -52,6 +58,7 @@ export function useLauncherData(report: (error: unknown) => void): LauncherDataA
     const wave = window.wave
     let active = true
     let accountsEvent = false
+    let profilesEvent = false
     let gameEvent = false
 
     const unsubscribe = [
@@ -59,6 +66,11 @@ export function useLauncherData(report: (error: unknown) => void): LauncherDataA
         accountsEvent = true
         setAccounts(Array.isArray(list) ? list : [])
         setAccountsLoaded(true)
+      }),
+      wave.profiles.onChange((list) => {
+        profilesEvent = true
+        setProfiles(Array.isArray(list) ? list : [])
+        setProfilesLoaded(true)
       }),
       wave.game.onState((state) => {
         gameEvent = true
@@ -98,6 +110,16 @@ export function useLauncherData(report: (error: unknown) => void): LauncherDataA
       })
       .catch((error: unknown) => active && report(error))
 
+    wave.profiles
+      .list()
+      .then((list) => {
+        if (active && !profilesEvent) {
+          setProfiles(Array.isArray(list) ? list : [])
+        }
+      })
+      .catch((error: unknown) => active && report(error))
+      .finally(() => active && setProfilesLoaded(true))
+
     wave.game
       .state()
       .then((state) => active && !gameEvent && setGame(state))
@@ -120,5 +142,9 @@ export function useLauncherData(report: (error: unknown) => void): LauncherDataA
     setSettingsLoaded(true)
   }, [])
 
-  return { info, infoError, accounts, accountsLoaded, settings, settingsLoaded, game, logs, retry, applySettings }
+  const applyProfile = useCallback((profile: ProfileView) => {
+    setProfiles((current) => current.map((item) => (item.id === profile.id ? profile : item)))
+  }, [])
+
+  return { info, infoError, accounts, accountsLoaded, settings, settingsLoaded, profiles, profilesLoaded, game, logs, retry, applySettings, applyProfile }
 }
