@@ -144,6 +144,10 @@ build has one, the launcher shows that sign-in isn't set up instead of trying.
    registration"); the launcher says so.
 4. Build with the app's **Application (client) ID**: `MAIN_VITE_MSA_CLIENT_ID=<id> npm run build`
    (or set `WAVE_MSA_CLIENT_ID=<id>` when running, for development). The ID is not a secret.
+   For the installers CI builds, add it as a repository **variable** named `MSA_CLIENT_ID`
+   (Settings > Secrets and variables > Actions > Variables); the next build includes it.
+   An already installed launcher can use one without reinstalling: set the user environment
+   variable `WAVE_MSA_CLIENT_ID` (PowerShell: `setx WAVE_MSA_CLIENT_ID <id>`) and start it again.
 
 ### How signing in works
 
