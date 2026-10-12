@@ -127,7 +127,9 @@ async function start(): Promise<void> {
     isRunning: (id) => game?.isBusyWith(id) === true,
     bundledModJar: findBundledModJar,
     trash: (path) => shell.trashItem(path),
-    log
+    log,
+    // Mods' Java requirements are checked against the Java the game will run with.
+    javaPath: () => settings.get().javaPath
   })
 
   let profilesTimer: NodeJS.Timeout | null = null

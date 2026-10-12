@@ -6,6 +6,7 @@ import { pipeline } from 'node:stream/promises'
 
 import type { AddModsResult, AddSkipReason, IncludedMod, ModProblem, ModView, ModsReport } from '@shared/ipc'
 
+import { probeJava } from '../game/java'
 import { findGameVersion, DEFAULT_GAME_VERSION, type GameVersionSpec } from '../game/versions'
 import { instanceDir, type LauncherPaths } from '../paths'
 import type { StoredProfile } from '../profiles'
@@ -36,6 +37,10 @@ export interface ModsServiceDeps {
   trash: (path: string) => Promise<void>
   log: (message: string) => void
   now?: () => number
+  /** The Java chosen in Settings, or null for the one the launcher installs. */
+  javaPath?: () => string | null
+  /** The major version of a Java executable (runs it); defaults to probeJava. */
+  probeJavaMajor?: (path: string) => Promise<number>
 }
 
 /** What the controller needs to decide whether a launch may go ahead. */
@@ -57,6 +62,7 @@ export class ModsService {
   private readonly queues = new Map<string, Promise<unknown>>()
   private readonly now: () => number
   private bundledInfo: { path: string; version: string | null } | null = null
+  private javaInfo: { path: string; mtimeMs: number; major: Promise<number | null> } | null = null
 
   constructor(private readonly deps: ModsServiceDeps) {
     this.now = deps.now ?? Date.now
@@ -349,16 +355,57 @@ export class ModsService {
     const spec = findGameVersion(profile.gameVersion) ?? DEFAULT_GAME_VERSION
     const scan = await scanModsFolder(this.modsDir(profile.id), this.cache)
     const included = await this.included(spec)
+    const java = await this.javaMajor(spec)
     const analysis = analyzeMods({
       mods: scan.mods,
       minecraft: spec.minecraft,
-      javaMajor: spec.java,
+      javaMajor: java ?? spec.java,
       included,
       overrides: await this.readOverrides(profile.id),
       customFabricOptions: splitJvmArgs(profile.jvmArgs).some((arg) => CUSTOM_FABRIC_OPTION.test(arg)),
       now: this.now()
     })
+
+    if (java === null) {
+      softenJavaErrors(analysis)
+    }
+
     return { scan, analysis, included }
+  }
+
+  /**
+   * The major version of the Java the game will run with: the one chosen in Settings (run once
+   * per file to ask), else the version's own. Null when the chosen one can't be asked.
+   */
+  private async javaMajor(spec: GameVersionSpec): Promise<number | null> {
+    const path = this.deps.javaPath?.() ?? null
+
+    if (!path) {
+      return spec.java
+    }
+
+    const mtimeMs = await stat(path).then(
+      (info) => info.mtimeMs,
+      () => null
+    )
+
+    if (mtimeMs === null) {
+      return null
+    }
+
+    if (this.javaInfo?.path !== path || this.javaInfo.mtimeMs !== mtimeMs) {
+      const probe = this.deps.probeJavaMajor ?? ((javaPath: string) => probeJava(javaPath).then((info) => info.major))
+      this.javaInfo = {
+        path,
+        mtimeMs,
+        major: probe(path).catch((error: unknown) => {
+          this.deps.log(`Couldn't check the version of ${path}: ${messageOf(error)}`)
+          return null
+        })
+      }
+    }
+
+    return this.javaInfo.major
   }
 
   /** Fabric Loader, Fabric API and Wave Client, as the launcher installs them for this version. */
@@ -472,6 +519,20 @@ export class ModsService {
       throw new Error('Minecraft is running with this profile. Close it to change its mods.')
     }
   }
+}
+
+/** The Java in Settings couldn't be asked its version: its requirements are only a warning. */
+function softenJavaErrors(analysis: ModAnalysis): void {
+  const soften = (problem: ModProblem): ModProblem => (problem.code === 'java' && problem.severity === 'error' ? { ...problem, severity: 'warning' } : problem)
+  analysis.profileProblems = analysis.profileProblems.map(soften)
+
+  for (const result of analysis.mods.values()) {
+    result.problems = result.problems.map(soften)
+  }
+
+  const all = [...analysis.profileProblems, ...[...analysis.mods.values()].flatMap((result) => result.problems)]
+  analysis.errors = all.filter((problem) => problem.severity === 'error').length
+  analysis.warnings = all.length - analysis.errors
 }
 
 async function sha1(path: string): Promise<string> {
