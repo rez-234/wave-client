@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { AccountView, CrashSummary, ModView } from '@shared/ipc'
 
-import { crashDetailsText, crashTitle, playAgainLabel, exitNote, failedTitle, matchSuspects, modProblemsTitle, playButtonModel, suspectName } from './play'
+import { crashDetailsText, crashTitle, playAgainLabel, exitNote, failedTitle, matchSuspects, modProblemsText, modProblemsTitle, playButtonModel, suspectName } from './play'
 
 const ok: AccountView = { id: 'a'.repeat(32), name: 'Steve', selected: true, status: 'ok' }
 const expired: AccountView = { ...ok, status: 'expired' }
@@ -139,6 +139,12 @@ describe('card titles', () => {
   it('names the profile', () => {
     expect(modProblemsTitle(3, 'PvP')).toBe('3 mods in PvP have problems')
     expect(modProblemsTitle(1, 'PvP')).toBe('1 mod in PvP has a problem')
+  })
+
+  it("doesn't say Minecraft won't start once the player chose Play anyway for these problems", () => {
+    expect(modProblemsText(true, false)).toBe("Minecraft didn't start because these mods would stop it from loading.")
+    expect(modProblemsText(false, false)).toBe("Minecraft won't start until these are fixed.")
+    expect(modProblemsText(false, true)).toBe('You chose Play anyway for these problems. Minecraft will try to start, but it may not load.')
     expect(modProblemsTitle(2, null)).toBe('2 mods have problems')
     expect(crashTitle({ profile: { id: 'pvp', name: 'PvP' } })).toBe('PvP crashed')
     expect(crashTitle({})).toBe('Minecraft crashed')

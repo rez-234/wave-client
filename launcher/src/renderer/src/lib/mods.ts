@@ -276,6 +276,56 @@ export async function turnOffModsWithErrors(
   return { report, turnedOff }
 }
 
+/** Whether "Turn them off and play" can do anything: a turned-on mod has an error. Offered when the report isn't this profile's yet. */
+export function canTurnOffAndPlay(report: ModsReport | null, profileId: string): boolean {
+  return report === null || report.profileId !== profileId || modsToTurnOff(report).length > 0
+}
+
+export interface TurnOffOutcome {
+  /** Press Play again: something was turned off (or nothing stops the launch) and the same profile is still selected. */
+  launch: boolean
+  toast: ToastContent | null
+}
+
+/**
+ * What happens after "Turn them off and play" turned mods off. It doesn't play when the player picked
+ * another profile meanwhile (Play launches the selected one), or when nothing was turned off and the
+ * profile's own problems would stop the launch again.
+ */
+export function turnOffOutcome(result: { report: ModsReport; turnedOff: string[] }, profileName: string, stillSelected: boolean): TurnOffOutcome {
+  const { turnedOff } = result
+
+  if (turnedOff.length > 0) {
+    const lines = turnedOff.length <= 4 ? turnedOff : [...turnedOff.slice(0, 3), `And ${turnedOff.length - 3} more.`]
+    return { launch: stillSelected, toast: { tone: 'success', title: `Turned off ${plural(turnedOff.length, 'mod')} in ${profileName}`, lines } }
+  }
+
+  if (result.report.errors > 0) {
+    return {
+      launch: false,
+      toast: {
+        tone: 'warn',
+        title: `No mods to turn off in ${profileName}`,
+        lines: ['The problems left are with the profile itself, not a mod. Review mods to see them, or choose Play anyway.']
+      }
+    }
+  }
+
+  return { launch: stillSelected, toast: null }
+}
+
+/**
+ * The errors that stop a launch, by mod key and problem code (profile problems have an empty key):
+ * what the main process compares when Play anyway was chosen for "this exact set of problems".
+ */
+export function blockingSignature(report: ModsReport): string {
+  const errors = [
+    ...report.profileProblems.filter((problem) => problem.severity === 'error').map((problem) => `:${problem.code}`),
+    ...report.mods.flatMap((mod) => mod.problems.filter((problem) => problem.severity === 'error').map((problem) => `${mod.key}:${problem.code}`))
+  ]
+  return errors.sort().join('\n')
+}
+
 /**
  * What a row says about its state, besides its problems: "Turned off", or "Not loaded" for a jar
  * that's on but that Fabric skips (a Forge jar, an unused older copy). Null when it loads, or when an
