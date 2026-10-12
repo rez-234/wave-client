@@ -205,6 +205,30 @@ describe('GameController', () => {
     expect(logText(snapshot)).toMatch(/^---- Launch 1 · Default ----\n[\s\S]*\n---- Launch 2 · Default ----\n/)
   })
 
+  it('hides the launcher for the game before a crash right away can show it again', async () => {
+    await accounts.upsert(ACCOUNT)
+    vi.mocked(prepareGame).mockResolvedValue(PREPARED)
+    const order: string[] = []
+    window.afterLaunch.mockImplementation(() => order.push('afterLaunch'))
+    window.afterExit.mockImplementation(() => order.push('afterExit'))
+    // A slow disk: saving the last played time takes a while.
+    let saved: () => void = () => {}
+    const update = profiles.update.bind(profiles)
+    vi.spyOn(profiles, 'update').mockImplementation(async (id, changes) => {
+      await new Promise<void>((resolve) => (saved = resolve))
+      return update(id, changes)
+    })
+    const ctl = controller()
+    const launching = ctl.launch()
+    await vi.waitFor(() => expect(started).toHaveLength(1))
+    const crash = { reason: 'boom', reportPath: null, jvmErrorPath: null, suspectedMods: [], lastLines: [] }
+    started[0]!['options'].onExit({ code: 1, signal: null, crash, killed: false })
+    saved()
+    await launching
+    expect(order).toEqual(['afterLaunch', 'afterExit'])
+    expect(profiles.get('default')?.lastPlayedAt).toEqual(expect.any(Number))
+  })
+
   it('only offers the files of the crash being shown', async () => {
     await accounts.upsert(ACCOUNT)
     vi.mocked(prepareGame).mockResolvedValue(PREPARED)

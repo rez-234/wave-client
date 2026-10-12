@@ -169,8 +169,14 @@ export class GameController {
       this.session = session
       ;(this.deps.startSession ?? ((s) => s.start()))(session)
       this.setState({ phase: 'running' })
+
+      // Before anything that waits: a game that crashes at once shows the launcher again, and
+      // that must not be undone by hiding it afterwards.
+      if (this.session === session) {
+        this.deps.window.afterLaunch(settings.afterLaunch)
+      }
+
       await this.deps.profiles.update(profile.id, { lastPlayedAt: Date.now() }).catch((error: unknown) => this.deps.log(`Couldn't save the last played time: ${String(error)}`))
-      this.deps.window.afterLaunch(settings.afterLaunch)
     } catch (error) {
       if (abort.signal.aborted) {
         this.note('INFO', 'Cancelled')
