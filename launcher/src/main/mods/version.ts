@@ -27,7 +27,7 @@ export class SemanticVersion {
   /** `fromText`: SemanticVersionImpl(String) keeps a leading x ("x.x"); building one from numbers refuses it. */
   constructor(components: readonly number[], prerelease: string | null, build: string | null, fromText = false) {
     if (components.length === 0 || (components[0] === WILDCARD && !fromText)) {
-      throw new VersionParsingError(`Invalid components: ${components.join('.')}`)
+      throw new VersionParsingError(`Invalid components: ${components.map((c) => (c === WILDCARD ? 'x' : c)).join('.')}`)
     }
 
     this.components = components

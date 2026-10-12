@@ -151,6 +151,39 @@ describe('analyzeMods', () => {
       expect(analysis.mods.get('s.jar')!.loads).toBe(false)
     })
 
+    it('a mod may depend on its own id or on what it provides', () => {
+      const analysis = analyze([jar('a.jar', meta('amod', '1.0.0', { provides: ['amod-api'], depends: { 'amod-api': '*', amod: '>=1' }, recommends: { amod: '*' } }))])
+      expect(codes(analysis, 'a.jar')).toEqual([])
+    })
+
+    it('a dependency only a server-only mod nested in another jar meets is no problem', () => {
+      const analysis = analyze([
+        jar('b.jar', meta('bmod', '1.0.0'), { nested: [info(meta('srvlib', '1.0.0', { environment: 'server' }))] }),
+        jar('c.jar', meta('cmod', '1.0.0', { depends: { srvlib: '*' } }))
+      ])
+      expect(codes(analysis, 'c.jar')).toEqual([])
+      expect(analysis.errors).toBe(0)
+    })
+
+    it('a server-only copy meets a dependency even when a turned-off copy is there too (Fabric never sees turned-off files)', () => {
+      const analysis = analyze([jar('a.jar', meta('amod', '1', { depends: { serverlib: '*' } })), jar('s.jar', meta('serverlib', '1', { environment: 'server' })), jar('old.jar.disabled', meta('serverlib', '0.9'))])
+      expect(codes(analysis, 'a.jar')).toEqual([])
+    })
+
+    it('a server-only copy does not excuse a dependency when another copy with that id is there (Fabric keeps it required)', () => {
+      const analysis = analyze([
+        jar('lib-1.jar', meta('lib', '1.0.0')),
+        jar('lib-srv.jar', meta('lib', '2.0.0', { environment: 'server' })),
+        jar('aa.jar', meta('aa', '1.0.0', { depends: { lib: '>=2' } }))
+      ])
+      expect(codes(analysis, 'aa.jar')).toEqual(['error:dependency-version'])
+    })
+
+    it('only the id of a server-only mod counts, not what it provides', () => {
+      const analysis = analyze([jar('a.jar', meta('amod', '1', { depends: { 'srv-api': '*' } })), jar('s.jar', meta('serverlib', '1', { environment: 'server', provides: ['srv-api'] }))])
+      expect(codes(analysis, 'a.jar')).toEqual(['error:missing'])
+    })
+
     it('unknown Fabric API modules: a warning only when the module list is unknown', () => {
       const mod = jar('a.jar', meta('amod', '1', { depends: { 'fabric-new-api-v1': '*' } }))
       expect(codes(analyzeMods({ ...baseInput([mod]), included: included([]) }), 'a.jar')).toEqual(['warning:unknown-dependency'])
@@ -306,6 +339,73 @@ describe('analyzeMods', () => {
       expect(analysis.mods.get('b.jar')!.loads).toBe(true)
     })
 
+    it('the copy another mod needs loads, not the newest (Fabric picks a set that works)', () => {
+      const analysis = analyze([jar('lib-1.jar', meta('lib', '1.0.0')), jar('lib-2.jar', meta('lib', '2.0.0')), jar('a.jar', meta('aa', '1.0.0', { depends: { lib: '<2' } }))])
+      expect(codes(analysis, 'a.jar')).toEqual([])
+      expect(analysis.mods.get('lib-1.jar')).toMatchObject({ loads: true, problems: [] })
+      expect(analysis.mods.get('lib-2.jar')).toMatchObject({ loads: false, problems: [{ severity: 'warning', code: 'duplicate', message: 'Not used: lib 1.0.0 (lib-1.jar) loads instead.' }] })
+      expect(analysis.errors).toBe(0)
+    })
+
+    it('a copy another mod breaks loses to one it does not break', () => {
+      const analysis = analyze([jar('lib-1.jar', meta('lib', '1.0.0')), jar('lib-2.jar', meta('lib', '2.0.0')), jar('a.jar', meta('aa', '1.0.0', { breaks: { lib: '>=2' } }))])
+      expect(codes(analysis, 'a.jar')).toEqual([])
+      expect(analysis.mods.get('lib-1.jar')!.loads).toBe(true)
+      expect(codes(analysis, 'lib-2.jar')).toEqual(['warning:duplicate'])
+      expect(analysis.errors).toBe(0)
+    })
+
+    it('a newer copy whose own dependency is missing loses to an older one that works', () => {
+      const analysis = analyze([jar('lib-1.jar', meta('lib', '1.0.0')), jar('lib-2.jar', meta('lib', '2.0.0', { depends: { other: '*' } }))])
+      expect(analysis.mods.get('lib-1.jar')).toMatchObject({ loads: true, problems: [] })
+      expect(codes(analysis, 'lib-2.jar')).toEqual(['warning:duplicate'])
+      expect(analysis.errors).toBe(0)
+    })
+
+    it('when mods need different copies, only a warning (which copy Fabric picks decides it)', () => {
+      const analysis = analyze([
+        jar('lib-1.jar', meta('lib', '1.0.0')),
+        jar('lib-2.jar', meta('lib', '2.0.0')),
+        jar('a.jar', meta('aa', '1.0.0', { depends: { lib: '<2' } })),
+        jar('b.jar', meta('bb', '1.0.0', { depends: { lib: '>=2' } }))
+      ])
+      expect(analysis.errors).toBe(0)
+      expect(problemsOf(analysis, 'a.jar')).toEqual([
+        expect.objectContaining({ severity: 'warning', code: 'dependency-version', message: 'Needs lib older than 2. Fabric may load lib 1.0.0 (lib-1.jar) instead; if the game doesn\'t start, remove the copy you don\'t need.' })
+      ])
+    })
+
+    it('a top-level copy that cannot load is unused when a copy nested in another mod can', () => {
+      const analysis = analyze([
+        jar('cloth-old.jar', meta('cloth-config', '11.0.0', { depends: { minecraft: '1.20.1' } })),
+        jar('rei.jar', meta('rei', '1.0.0', { depends: { 'cloth-config': '*' } }), { nested: [info(meta('cloth-config', '20.0.0', { name: 'Cloth Config', depends: { minecraft: '~1.21.11' } }))] })
+      ])
+      expect(analysis.mods.get('cloth-old.jar')).toMatchObject({
+        loads: false,
+        problems: [
+          {
+            severity: 'warning',
+            code: 'duplicate',
+            message: 'Not used: Cloth Config 20.0.0 (inside rei.jar) loads instead.',
+            fix: { kind: 'remove', key: 'cloth-old.jar', label: 'Remove this copy' }
+          }
+        ]
+      })
+      expect(codes(analysis, 'rei.jar')).toEqual([])
+      expect(analysis.errors).toBe(0)
+    })
+
+    it('a nested copy rescues a top-level one only if it can load and covers every id the top-level one has', () => {
+      const analysis = analyze([
+        jar('x-old.jar', meta('xlib', '1.0.0', { provides: ['xapi'], depends: { minecraft: '1.20.1' } })),
+        jar('host.jar', meta('host', '1.0.0'), { nested: [info(meta('xlib', '2.0.0'))] }),
+        jar('y-old.jar', meta('ylib', '1.0.0', { depends: { minecraft: '1.20.1' } })),
+        jar('host2.jar', meta('host2', '1.0.0'), { nested: [info(meta('ylib', '2.0.0', { depends: { minecraft: '1.20.1' } }))] })
+      ])
+      expect(codes(analysis, 'x-old.jar')).toEqual(['error:minecraft'])
+      expect(codes(analysis, 'y-old.jar')).toEqual(['error:minecraft'])
+    })
+
     it('a top-level copy next to a nested copy is never reported', () => {
       const analysis = analyze([jar('cloth.jar', meta('cloth-config', '15.0.0')), jar('menu.jar', meta('modmenu', '1'), { nested: [info(meta('cloth-config', '14.0.0'))] })])
       expect(codes(analysis, 'cloth.jar')).toEqual([])
@@ -336,6 +436,18 @@ describe('analyzeMods', () => {
       const analysis = analyze([jar('odd.jar', odd), jar('a.jar', meta('amod', '1', { depends: { mystery: '*' } }))])
       expect(codes(analysis, 'odd.jar')).toEqual(['warning:unchecked'])
       expect(codes(analysis, 'a.jar')).toEqual(['warning:missing'])
+      expect(analysis.errors).toBe(0)
+    })
+
+    it('with an unchecked jar, a wrong version or a turned-off dependency is only a warning too', () => {
+      const odd: ModReadResult = { ok: false, kind: 'unchecked', message: 'odd layout' }
+      const analysis = analyze([
+        jar('lib-1.jar', meta('lib', '1.0.0')),
+        jar('lib-2.jar', odd),
+        jar('aa.jar', meta('aa', '1.0.0', { depends: { lib: '>=2', offmod: '*' }, breaks: { lib: '1.0.0' } })),
+        jar('off.jar.disabled', meta('offmod', '1'))
+      ])
+      expect(codes(analysis, 'aa.jar')).toEqual(['warning:dependency-version', 'warning:disabled-dependency', 'warning:breaks'])
       expect(analysis.errors).toBe(0)
     })
 
