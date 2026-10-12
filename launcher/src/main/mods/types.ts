@@ -90,8 +90,11 @@ export interface AnalysisInput {
   javaMajor: number
   /** fabricloader, fabric-api and waveclient, with their nested mods. */
   included: IncludedSpec[]
-  /** <gameDir>/config/fabric_loader_dependencies.json: absent (null), parsed, or unparsable. */
-  overrides: null | { ok: true; value: unknown } | { ok: false; message: string }
+  /**
+   * <gameDir>/config/fabric_loader_dependencies.json: absent (null), its text (read here with
+   * Fabric's JSON rules) or an already parsed value, or a file that couldn't be read.
+   */
+  overrides: null | { ok: true; value: unknown } | { ok: true; text: string } | { ok: false; message: string }
   /** The profile's JVM args set fabric.modsFolder / debug.disableModIds / gameVersion / debug.replaceVersion. */
   customFabricOptions: boolean
   /** Now, in ms: a jar changed in the last 2 s that can't be read is reported as 'copying'. */

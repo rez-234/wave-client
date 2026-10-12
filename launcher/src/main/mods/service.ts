@@ -119,7 +119,7 @@ export class ModsService {
     return { errors: firstPerMod.length, mods: firstPerMod.slice(0, 3).map(({ key, name, message }) => ({ key, name, message })), hash }
   }
 
-  setEnabled(profileId: string, key: unknown, enabled: boolean): Promise<ModsReport> {
+  async setEnabled(profileId: string, key: unknown, enabled: boolean): Promise<ModsReport> {
     const modKey = checkModKey(key)
     return this.exclusive(profileId, async () => {
       this.refuseWhileRunning(profileId)
@@ -145,7 +145,7 @@ export class ModsService {
     })
   }
 
-  remove(profileId: string, key: unknown): Promise<ModsReport> {
+  async remove(profileId: string, key: unknown): Promise<ModsReport> {
     const modKey = checkModKey(key)
     return this.exclusive(profileId, async () => {
       this.refuseWhileRunning(profileId)
@@ -385,19 +385,14 @@ export class ModsService {
     }
   }
 
-  private async readOverrides(profileId: string): Promise<{ ok: true; value: unknown } | { ok: false; message: string } | null> {
-    let text: string
-
+  /** The overrides file's text; the analysis parses it with Fabric's own JSON rules. */
+  private async readOverrides(profileId: string): Promise<{ ok: true; text: string } | { ok: false; message: string } | null> {
     try {
-      text = await readFile(join(instanceDir(this.deps.paths, profileId), 'config', 'fabric_loader_dependencies.json'), 'utf8')
-    } catch {
-      return null
-    }
-
-    try {
-      return { ok: true, value: JSON.parse(text.replace(/^﻿/, '')) as unknown }
+      return { ok: true, text: await readFile(join(instanceDir(this.deps.paths, profileId), 'config', 'fabric_loader_dependencies.json'), 'utf8') }
     } catch (error) {
-      return { ok: false, message: messageOf(error) }
+      const code = (error as NodeJS.ErrnoException).code
+      // Fabric reads it only when it exists; one it can't open stops the game.
+      return code === 'ENOENT' || code === 'ENOTDIR' ? null : { ok: false, message: messageOf(error) }
     }
   }
 

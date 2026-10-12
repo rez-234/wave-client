@@ -1,6 +1,6 @@
 import type { ModFix, ModProblem } from '@shared/ipc'
 
-import { type DependencyOverrides, applyDependencyOverrides, parseDependencyOverrides } from './overrides'
+import { type DependencyOverrides, applyDependencyOverrides, parseDependencyOverrides, parseDependencyOverridesText } from './overrides'
 import type { AnalysisInput, IncludedSpec, ModAnalysis, ModDependency, ModJarInfo, ModMetadata, ModResult, ScannedMod } from './types'
 import { type Version, compareVersions, describePredicates, matchesAny, parsePredicate, parseVersion } from './version'
 
@@ -202,7 +202,7 @@ function readOverrides(input: AnalysisInput, profileProblems: ModProblem[]): Dep
   }
 
   try {
-    return parseDependencyOverrides(input.overrides.value)
+    return 'text' in input.overrides ? parseDependencyOverridesText(input.overrides.text) : parseDependencyOverrides(input.overrides.value)
   } catch (e) {
     profileProblems.push(error('overrides', message, e instanceof Error ? e.message : String(e)))
     return null

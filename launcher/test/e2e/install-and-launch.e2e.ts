@@ -9,10 +9,12 @@ import { DEFAULT_SETTINGS, type LogLine } from '@shared/ipc'
 
 import { buildLaunchCommand } from '../../src/main/game/launch-command'
 import { prepareGame } from '../../src/main/game/install'
+import { FABRIC_API_MODULES } from '../../src/main/game/fabric-api-modules'
 import { PINS } from '../../src/main/game/pins'
 import { GameSession, type GameExit } from '../../src/main/game/process'
 import { DownloadQueue } from '../../src/main/net/downloads'
 import { HttpClient } from '../../src/main/net/http'
+import { readModJar } from '../../src/main/mods/jar'
 import { launcherPaths } from '../../src/main/paths'
 
 /**
@@ -43,6 +45,13 @@ describe('install and launch', () => {
     await access(game.java)
     expect((await readdir(paths.client)).sort()).toEqual([`fabric-api-${PINS.fabricApi}.jar`, resolve(modJar!).split(/[\\/]/).pop()].sort())
     expect((await stat(join(paths.versions, PINS.minecraft, `${PINS.minecraft}.jar`))).size).toBeGreaterThan(10_000_000)
+
+    // The mod check's table of Fabric API's modules matches the jar that was installed.
+    const api = await readModJar(join(paths.client, `fabric-api-${PINS.fabricApi}.jar`))
+    expect(api.ok).toBe(true)
+    const nested = api.ok ? api.info.nested.map((mod) => ({ id: mod.metadata!.id, version: mod.metadata!.version, provides: mod.metadata!.provides })) : []
+    const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id)
+    expect(nested.sort(byId)).toEqual([...FABRIC_API_MODULES[PINS.fabricApi]!].map((m) => ({ id: m.id, version: m.version, provides: [...m.provides] })).sort(byId))
 
     // A second check of an installed game downloads nothing but metadata, quickly.
     const recheck = Date.now()

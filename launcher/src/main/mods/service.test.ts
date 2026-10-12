@@ -201,8 +201,8 @@ describe('ModsService', () => {
   it('serves small PNG icons only', async () => {
     const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(16)])
     await mkdir(mods, { recursive: true })
-    await writeFile(join(mods, 'a.jar'), makeZip([{ name: 'fabric.mod.json', data: JSON.stringify({ schemaVersion: 1, id: 'a', version: '1', icon: 'icon.png' }) }, { name: 'icon.png', data: png }]))
-    await writeFile(join(mods, 'b.jar'), makeZip([{ name: 'fabric.mod.json', data: JSON.stringify({ schemaVersion: 1, id: 'b', version: '1', icon: 'icon.png' }) }, { name: 'icon.png', data: 'not a png' }]))
+    await writeFile(join(mods, 'a.jar'), makeZip([{ name: 'fabric.mod.json', data: JSON.stringify({ schemaVersion: 1, id: 'alpha', version: '1', icon: 'icon.png' }) }, { name: 'icon.png', data: png }]))
+    await writeFile(join(mods, 'b.jar'), makeZip([{ name: 'fabric.mod.json', data: JSON.stringify({ schemaVersion: 1, id: 'beta', version: '1', icon: 'icon.png' }) }, { name: 'icon.png', data: 'not a png' }]))
     const ms = service()
     expect(await ms.icon('default', 'a.jar')).toBe(`data:image/png;base64,${png.toString('base64')}`)
     expect(await ms.icon('default', 'b.jar')).toBeNull()
