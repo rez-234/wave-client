@@ -143,6 +143,7 @@ describe('parseFabricModJson', () => {
     expect(metadata.recommends).toEqual([{ id: 'modmenu', predicates: ['*'] }])
     fails(v1({ depends: { minecraft: '>= 1.21' } }), /non-empty/)
     fails(v1({ depends: { thing: '<abc' } }), /Invalid predicate/)
+    fails(v1({ depends: { thing: 'x.x' } }), /Invalid version requirement "x\.x"/)
     fails(v1({ depends: { thing: 1 } }), /string or string array/)
     fails(v1({ depends: { thing: [1] } }))
     fails(v1({ depends: ['thing'] }), /must be an object/)

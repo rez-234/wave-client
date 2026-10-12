@@ -24,8 +24,9 @@ export class SemanticVersion {
   readonly build: string | null
   readonly friendly: string
 
-  constructor(components: readonly number[], prerelease: string | null, build: string | null) {
-    if (components.length === 0 || components[0] === WILDCARD) {
+  /** `fromText`: SemanticVersionImpl(String) keeps a leading x ("x.x"); building one from numbers refuses it. */
+  constructor(components: readonly number[], prerelease: string | null, build: string | null, fromText = false) {
+    if (components.length === 0 || (components[0] === WILDCARD && !fromText)) {
       throw new VersionParsingError(`Invalid components: ${components.join('.')}`)
     }
 
@@ -107,7 +108,8 @@ export class SemanticVersion {
       components = components.slice(0, firstWildcard + 1)
     }
 
-    return new SemanticVersion(components, prerelease, build)
+    // "x.x" parses; a predicate built from it then fails (in Fabric, an exception that fails the jar).
+    return new SemanticVersion(components, prerelease, build, true)
   }
 
   /** Past the end: x repeats after an x, otherwise 0. */

@@ -62,7 +62,7 @@ describe('SemanticVersion (Fabric VersionParsingTests)', () => {
       expect(parses(bad, false), bad).toBe(false)
     }
 
-    for (const ok of ['2.x', '2.x.x', '2.X', '2.*']) {
+    for (const ok of ['2.x', '2.x.x', '2.X', '2.*', 'x.x', '*.*', 'x.x.x']) {
       expect(parses(ok, true), ok).toBe(true)
     }
 
@@ -121,6 +121,10 @@ describe('Fabric behaviour checked against its own classes (FABRIC-13)', () => {
     expect(() => parsePredicate('>abc')).toThrow(/Invalid predicate/)
     expect(() => parsePredicate('>=1.x')).toThrow(/wildcards/)
     expect(() => parsePredicate('<=abc')).not.toThrow()
+    // Java parses these, then fails building the range (IllegalArgumentException), which fails the jar.
+    expect(() => parsePredicate('x.x')).toThrow(VersionParsingError)
+    expect(() => parsePredicate('*.*')).toThrow(VersionParsingError)
+    expect(() => parsePredicate('=x.x.x')).toThrow(VersionParsingError)
   })
 
   it('matches everything with "*" or an empty predicate, and nothing with an empty list', () => {
