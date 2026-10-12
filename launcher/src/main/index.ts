@@ -125,9 +125,13 @@ async function start(): Promise<void> {
     paths,
     profile: (id) => profiles.get(id),
     isRunning: (id) => game?.isBusyWith(id) === true,
+    // Mods are checked when a launch begins: none are added between that check and the game starting.
+    isStarting: (id) => game?.isStartingWith(id) === true,
     bundledModJar: findBundledModJar,
     trash: (path) => shell.trashItem(path),
-    log
+    log,
+    // Mods' Java requirements are checked against the Java the game will run with.
+    javaPath: () => settings.get().javaPath
   })
 
   let profilesTimer: NodeJS.Timeout | null = null

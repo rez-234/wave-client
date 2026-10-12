@@ -2,7 +2,23 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const failUnlink = vi.hoisted(() => ({ code: null as string | null }))
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return {
+    ...actual,
+    unlink: async (path: Parameters<typeof actual.unlink>[0]) => {
+      if (failUnlink.code !== null && String(path).endsWith('locked.jar')) {
+        throw Object.assign(new Error(`${failUnlink.code}: locked`), { code: failUnlink.code })
+      }
+
+      return actual.unlink(path)
+    },
+  }
+})
 
 import { FileExistsError, checkModKey, findModFile, freeModName, modForms, renameNoClobber } from './files'
 
@@ -14,6 +30,7 @@ describe('mod file helpers', () => {
   })
 
   afterEach(async () => {
+    failUnlink.code = null
     await rm(dir, { recursive: true, force: true })
   })
 
@@ -45,6 +62,19 @@ describe('mod file helpers', () => {
 
     await renameNoClobber(dir, 'sodium.jar', 'sodium-new.jar')
     expect((await readdir(dir)).sort()).toEqual(['sodium-new.jar', 'sodium.jar.disabled'])
+  })
+
+  it('leaves only the old name when the new name is linked but the old one cannot be removed', async () => {
+    for (const code of ['EBUSY', 'EPERM']) {
+      await writeFile(join(dir, 'locked.jar'), 'x')
+      failUnlink.code = code
+      const error = await renameNoClobber(dir, 'locked.jar', 'locked.jar.disabled').catch((caught: unknown) => caught)
+      failUnlink.code = null
+      expect(error, code).not.toBeInstanceOf(FileExistsError)
+      expect((error as NodeJS.ErrnoException).code, code).toBe(code)
+      expect(await readdir(dir), code).toEqual(['locked.jar'])
+      await rm(join(dir, 'locked.jar'))
+    }
   })
 
   it('picks a free name for an added jar, in either form', async () => {

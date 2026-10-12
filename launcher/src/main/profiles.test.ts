@@ -2,7 +2,23 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const failRead = vi.hoisted(() => ({ code: null as string | null }))
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return {
+    ...actual,
+    readFile: (async (path: string, ...rest: unknown[]) => {
+      if (failRead.code !== null && String(path).endsWith('profiles.json')) {
+        throw Object.assign(new Error(`${failRead.code}: no`), { code: failRead.code })
+      }
+
+      return (actual.readFile as (...args: unknown[]) => Promise<unknown>)(path, ...rest)
+    }) as typeof actual.readFile
+  }
+})
 
 import { ProfileStore, cleanProfileName, copyName, profileIdFor } from './profiles'
 
@@ -46,6 +62,7 @@ describe('ProfileStore', () => {
   })
 
   afterEach(async () => {
+    failRead.code = null
     await rm(dir, { recursive: true, force: true })
   })
 
@@ -139,6 +156,38 @@ describe('ProfileStore', () => {
     await odd.load()
     expect(odd.list()).toMatchObject([{ id: 'ok', name: 'OK', memoryMb: 4096 }])
     expect(odd.selected().id).toBe('ok')
+  })
+
+  it("never writes over a profiles.json it can't read, and refuses changes until it can", async () => {
+    const original = JSON.stringify({ version: 1, selected: 'pvp', profiles: [{ id: 'pvp', name: 'PvP', memoryMb: 8192 }] })
+    await writeFile(file, original)
+    await mkdir(join(instances, 'pvp'), { recursive: true })
+    failRead.code = 'EACCES'
+    const logged: string[] = []
+    const profiles = new ProfileStore({ file, totalMemoryMb: 16384, listFolders: () => readdir(instances).catch(() => []), now: () => clock++, log: (m) => logged.push(m) })
+    await profiles.load()
+    failRead.code = null
+    expect(await readFile(file, 'utf8')).toBe(original)
+    expect((await readdir(dir)).sort()).toEqual(['instances', 'profiles.json'])
+    // Runs with what it can find in the meantime.
+    expect(profiles.list().map((p) => p.id)).toContain('pvp')
+    expect(logged.join('\n')).toMatch(/EACCES/)
+
+    await expect(profiles.update('pvp', { memoryMb: 2048 })).rejects.toThrow(/profiles\.json/)
+    await expect(profiles.create('New', 'new', null, true)).rejects.toThrow(/profiles\.json/)
+    await expect(profiles.select('pvp')).rejects.toThrow(/profiles\.json/)
+    expect(profiles.list().map((p) => p.id)).not.toContain('new')
+    expect(await readFile(file, 'utf8')).toBe(original)
+
+    // A damaged file that can't be set aside is kept too.
+    await writeFile(file, '{ not json')
+    const kept = new ProfileStore({ file, totalMemoryMb: 16384, listFolders: async () => [], now: () => clock++ })
+    const renameFails = vi.spyOn(await import('node:fs/promises'), 'rename')
+    renameFails.mockRejectedValueOnce(Object.assign(new Error('EPERM'), { code: 'EPERM' }))
+    await kept.load()
+    renameFails.mockRestore()
+    expect(await readFile(file, 'utf8')).toBe('{ not json')
+    await expect(kept.select('default')).rejects.toThrow(/profiles\.json/)
   })
 
   it('tells listeners about every change and writes them in order', async () => {

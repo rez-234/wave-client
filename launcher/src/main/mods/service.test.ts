@@ -30,6 +30,7 @@ describe('ModsService', () => {
   let paths: LauncherPaths
   let mods: string
   let running: boolean
+  let starting: boolean
   let trashed: string[]
 
   beforeEach(async () => {
@@ -41,6 +42,7 @@ describe('ModsService', () => {
     await mkdir(paths.client, { recursive: true })
     await writeFile(join(paths.client, 'waveclient.jar'), fabricJar('waveclient', '0.4.0'))
     running = false
+    starting = false
     trashed = []
   })
 
@@ -52,7 +54,8 @@ describe('ModsService', () => {
     new ModsService({
       paths,
       profile: (id) => (id === 'default' ? PROFILE : undefined),
-      isRunning: () => running,
+      isRunning: () => running || starting,
+      isStarting: () => starting,
       bundledModJar: async () => join(paths.client, 'waveclient.jar'),
       trash: async (path) => {
         trashed.push(path)
@@ -157,6 +160,18 @@ describe('ModsService', () => {
     await expect(ms.report('nope')).rejects.toThrow(/no longer exists/)
   })
 
+  it("doesn't add mods while the game is starting with the profile, after its mods were checked", async () => {
+    const ms = service()
+    starting = true
+    await expect(ms.add('default', [await download('lithium.jar', fabricJar('lithium', '0.14.0'))])).rejects.toThrow(/starting/)
+    expect(await readdir(mods).catch(() => [])).toEqual([])
+
+    // Once it runs, an added mod is for next time.
+    starting = false
+    running = true
+    expect((await ms.add('default', [await download('sodium.jar', fabricJar('sodium', '0.6.0'))])).added).toHaveLength(1)
+  })
+
   it('refuses to turn a mod on over another file', async () => {
     await mkdir(mods, { recursive: true })
     await writeFile(join(mods, 'iris.jar'), fabricJar('iris', '1.8.0'))
@@ -184,6 +199,51 @@ describe('ModsService', () => {
     await ms.setEnabled('default', 'menu.jar', false)
     expect((await ms.launchCheck('default')).errors).toBe(0)
     expect(await ms.modCount('default')).toBe(1)
+  })
+
+  it('checks Java requirements against the Java chosen in Settings, warning when it cannot be run', async () => {
+    await mkdir(mods, { recursive: true })
+    await writeFile(join(mods, 'aa.jar'), fabricJar('aa', '1.0.0', { depends: { java: '>=25' } }))
+    const javaFile = join(outside, 'java')
+    await writeFile(javaFile, 'x')
+    let javaPath: string | null = null
+    let probe: () => Promise<number> = async () => 25
+    let probes = 0
+    const withJava = () =>
+      new ModsService({
+        paths,
+        profile: (id) => (id === 'default' ? PROFILE : undefined),
+        isRunning: () => false,
+        bundledModJar: async () => join(paths.client, 'waveclient.jar'),
+        trash: async () => {},
+        log: () => {},
+        javaPath: () => javaPath,
+        probeJavaMajor: async () => {
+          probes++
+          return probe()
+        }
+      })
+
+    const service = withJava()
+    // The managed Java for 1.21.11 is 21.
+    expect((await service.launchCheck('default')).errors).toBe(1)
+    expect(probes).toBe(0)
+
+    javaPath = javaFile
+    expect((await service.launchCheck('default')).errors).toBe(0)
+    expect((await service.report('default')).mods[0]!.problems).toEqual([])
+    // Probed once per file, not on every check.
+    expect(probes).toBe(1)
+
+    probe = async () => {
+      throw new Error("Couldn't run it")
+    }
+    const unknown = withJava()
+    expect((await unknown.launchCheck('default')).errors).toBe(0)
+    const report = await unknown.report('default')
+    expect(report.mods[0]!.problems.map((problem) => [problem.code, problem.severity])).toEqual([['java', 'warning']])
+    expect(report.errors).toBe(0)
+    expect(report.warnings).toBe(1)
   })
 
   it('reports the included mods and a mods folder that is a file', async () => {
