@@ -113,6 +113,8 @@ export interface ProfileStoreOptions {
 export class ProfileStore {
   private data: ProfilesFile
   private writing: Promise<void> = Promise.resolve()
+  /** Why profiles.json couldn't be read and was kept as it is; nothing is written while set. */
+  private unreadable: string | null = null
   private readonly now: () => number
   /** Called after every change, so the window can show it. */
   onChange: (() => void) | null = null
@@ -132,20 +134,35 @@ export class ProfileStore {
     let parsed: Partial<ProfilesFile> | null = null
     let text: string | null = null
     let dirty = false
+    this.unreadable = null
 
     try {
       text = await readFile(this.options.file, 'utf8')
       parsed = JSON.parse(text) as Partial<ProfilesFile>
-    } catch {
-      // A file that exists but can't be read is kept under another name, never overwritten.
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+
       if (text !== null) {
+        // A damaged file is kept under another name, never overwritten.
         const kept = `${this.options.file}.unreadable-${this.now()}`
-        await rename(this.options.file, kept).catch(() => {})
-        this.options.log?.(`profiles.json could not be read and was set aside as ${kept}`)
+
+        try {
+          await rename(this.options.file, kept)
+          this.options.log?.(`profiles.json could not be read and was set aside as ${kept}`)
+        } catch (renameError) {
+          this.unreadable = `it is damaged and couldn't be set aside (${messageOf(renameError)})`
+        }
+      } else if (code !== 'ENOENT') {
+        // There is a file, but it can't be opened now (permissions, another program): keep it.
+        this.unreadable = code ?? messageOf(error)
       }
 
       parsed = null
       dirty = true
+    }
+
+    if (this.unreadable !== null) {
+      this.options.log?.(`profiles.json could not be read (${this.unreadable}); it is left as it is and profile changes won't be saved`)
     }
 
     const profiles: StoredProfile[] = []
@@ -158,7 +175,7 @@ export class ProfileStore {
       }
     }
 
-    if (parsed === null && !profiles.some((p) => p.id === DEFAULT_PROFILE_ID) && text === null) {
+    if (parsed === null && !profiles.some((p) => p.id === DEFAULT_PROFILE_ID) && text === null && this.unreadable === null) {
       profiles.push(this.newProfile(DEFAULT_PROFILE_ID, 'Default', legacy))
     }
 
@@ -179,7 +196,7 @@ export class ProfileStore {
     const selected = typeof parsed?.selected === 'string' && profiles.some((p) => p.id === parsed!.selected) ? parsed.selected : profiles[0]!.id
     this.data = { version: 1, selected, profiles }
 
-    if (dirty || parsed === null) {
+    if ((dirty || parsed === null) && this.unreadable === null) {
       await this.save()
     }
   }
@@ -208,6 +225,7 @@ export class ProfileStore {
    * fields are copied. Selects it when `select`.
    */
   async create(name: string, id: string, from: StoredProfile | null, select: boolean): Promise<StoredProfile> {
+    this.refuseUnreadable()
     const clean = this.checkName(name, null)
 
     if (!PROFILE_ID.test(id) || this.data.profiles.some((p) => p.id.toLowerCase() === id.toLowerCase())) {
@@ -232,6 +250,7 @@ export class ProfileStore {
 
   /** Changes a profile's name, game settings or play record; values are checked and clamped like on load. */
   async update(id: string, changes: ProfileChanges): Promise<StoredProfile> {
+    this.refuseUnreadable()
     const index = this.data.profiles.findIndex((p) => p.id === id)
 
     if (index < 0) {
@@ -257,6 +276,8 @@ export class ProfileStore {
 
   /** Removes a profile from the list (its folder is the caller's business). */
   async remove(id: string): Promise<void> {
+    this.refuseUnreadable()
+
     if (this.data.profiles.length <= 1) {
       throw new Error("You can't delete your only profile.")
     }
@@ -279,6 +300,8 @@ export class ProfileStore {
   }
 
   async select(id: string): Promise<void> {
+    this.refuseUnreadable()
+
     if (!this.data.profiles.some((p) => p.id === id)) {
       throw new Error('That profile no longer exists.')
     }
@@ -355,7 +378,14 @@ export class ProfileStore {
     }
   }
 
+  private refuseUnreadable(): void {
+    if (this.unreadable !== null) {
+      throw new Error(`Wave Client couldn't read profiles.json (${this.unreadable}), so profile changes can't be saved. Check that file in ${dirname(this.options.file)}, then restart Wave Client.`)
+    }
+  }
+
   private save(): Promise<void> {
+    this.refuseUnreadable()
     this.onChange?.()
     const run = this.writing.then(
       () => this.write(),
@@ -377,4 +407,8 @@ export class ProfileStore {
       throw error
     }
   }
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
