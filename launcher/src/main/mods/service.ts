@@ -40,7 +40,9 @@ export interface ModsServiceDeps {
 
 /** What the controller needs to decide whether a launch may go ahead. */
 export interface LaunchCheck {
+  /** Mods with errors (a broken mods folder counts as one). */
   errors: number
+  /** The first three, with their first error. */
   mods: Array<{ key: string; name: string; message: string }>
   /** Identifies this exact set of errors, for "Play anyway". */
   hash: string
@@ -112,8 +114,9 @@ export class ModsService {
     const hash = createHash('sha1')
       .update(errors.map((e) => `${e.key}:${e.code}`).sort().join('\n'))
       .digest('hex')
+    // One entry per mod (the folder counts as one): the card says "2 mods have problems".
     const firstPerMod = errors.filter((error, index) => errors.findIndex((other) => other.key === error.key) === index)
-    return { errors: report.errors, mods: firstPerMod.slice(0, 3).map(({ key, name, message }) => ({ key, name, message })), hash }
+    return { errors: firstPerMod.length, mods: firstPerMod.slice(0, 3).map(({ key, name, message }) => ({ key, name, message })), hash }
   }
 
   setEnabled(profileId: string, key: unknown, enabled: boolean): Promise<ModsReport> {
