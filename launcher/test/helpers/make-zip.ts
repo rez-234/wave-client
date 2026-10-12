@@ -5,28 +5,42 @@ export interface ZipFileSpec {
   data: Buffer | string
   /** 0 = stored, 8 = deflated (default). */
   method?: 0 | 8
+  /** Written as the method in the headers instead (the data is stored), e.g. 12 for bzip2. */
+  rawMethod?: number
+  /** General purpose flags (bit 0 = encrypted); UTF-8 names (0x800) are always flagged. */
+  flags?: number
+  /** A wrong CRC, for damaged-file tests. */
+  crc?: number
+}
+
+export interface ZipOptions {
+  zip64?: boolean
+  comment?: string
+  /** Bytes put in front of the zip without fixing the offsets (as self-extracting stubs do). */
+  prepend?: Buffer
 }
 
 /**
  * Builds a zip (a mod jar) in memory for tests. With `zip64`, sizes and offsets are written the
  * Zip64 way (0xFFFFFFFF markers, extra fields and a Zip64 end record), as large jars have them.
  */
-export function makeZip(files: ZipFileSpec[], options: { zip64?: boolean; comment?: string } = {}): Buffer {
+export function makeZip(files: ZipFileSpec[], options: ZipOptions = {}): Buffer {
   const locals: Buffer[] = []
   const centrals: Buffer[] = []
   let offset = 0
 
   for (const file of files) {
     const data = Buffer.isBuffer(file.data) ? file.data : Buffer.from(file.data)
-    const method = file.method ?? 8
+    const method = file.rawMethod ?? file.method ?? 8
     const body = method === 8 ? deflateRawSync(data) : data
     const name = Buffer.from(file.name, 'utf8')
-    const crc = crc32(data) >>> 0
+    const crc = file.crc ?? crc32(data) >>> 0
+    const flags = 0x800 | (file.flags ?? 0)
 
     const local = Buffer.alloc(30)
     local.writeUInt32LE(0x04034b50, 0)
     local.writeUInt16LE(20, 4)
-    local.writeUInt16LE(0x800, 6)
+    local.writeUInt16LE(flags, 6)
     local.writeUInt16LE(method, 8)
     local.writeUInt32LE(crc, 14)
     local.writeUInt32LE(body.length, 18)
@@ -48,7 +62,7 @@ export function makeZip(files: ZipFileSpec[], options: { zip64?: boolean; commen
     central.writeUInt32LE(0x02014b50, 0)
     central.writeUInt16LE(45, 4)
     central.writeUInt16LE(20, 6)
-    central.writeUInt16LE(0x800, 8)
+    central.writeUInt16LE(flags, 8)
     central.writeUInt16LE(method, 10)
     central.writeUInt32LE(crc, 16)
     central.writeUInt32LE(options.zip64 ? 0xffffffff : body.length, 20)
@@ -90,5 +104,5 @@ export function makeZip(files: ZipFileSpec[], options: { zip64?: boolean; commen
   eocd.writeUInt32LE(options.zip64 ? 0xffffffff : offset, 16)
   eocd.writeUInt16LE(comment.length, 20)
 
-  return Buffer.concat([...locals, directory, ...tail, eocd, comment])
+  return Buffer.concat([options.prepend ?? Buffer.alloc(0), ...locals, directory, ...tail, eocd, comment])
 }
