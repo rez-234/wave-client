@@ -2,11 +2,25 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { makeModJar, simpleMod } from '../../../test/helpers/make-mod-jar'
 import { makeZip } from '../../../test/helpers/make-zip'
 import { readModIcon, readModJar, readModJarFromBuffer } from './jar'
+
+// Lets a test make every nested jar hash the same, as a crafted jar that contains itself would.
+const hashing = vi.hoisted(() => ({ collide: false }))
+
+vi.mock('node:crypto', async (importOriginal) => {
+  const real = await importOriginal<typeof import('node:crypto')>()
+  return {
+    ...real,
+    createHash: (algorithm: string) => {
+      const hash = real.createHash(algorithm)
+      return hashing.collide ? Object.assign(hash, { digest: () => 'same' }) : hash
+    }
+  }
+})
 
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(100, 1)])
 
@@ -73,6 +87,28 @@ describe('readModJar', () => {
 
     const encrypted = makeZip([{ name: 'fabric.mod.json', data: '{"schemaVersion":1,"id":"lib","version":"1"}', flags: 1, method: 0 }])
     expect(await readModJarFromBuffer(simpleMod('demo', '1', {}, [{ path: 'META-INF/jars/x.jar', jar: encrypted }]))).toMatchObject({ ok: false, kind: 'unreadable' })
+  })
+
+  it('skips a nested jar that is the same as a jar it is inside (no endless wait)', async () => {
+    hashing.collide = true
+
+    try {
+      const c = simpleMod('ccc', '1')
+      const b = simpleMod('bbb', '1', {}, [{ path: 'META-INF/jars/c.jar', jar: c }])
+      const a = simpleMod('aaa', '1', {}, [{ path: 'META-INF/jars/b.jar', jar: b }])
+      const read = await Promise.race([readModJarFromBuffer(a), new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 2000))])
+      expect(read).toMatchObject({ ok: true, info: { metadata: { id: 'aaa' }, nested: [{ metadata: { id: 'bbb' }, nested: [] }] } })
+    } finally {
+      hashing.collide = false
+    }
+  })
+
+  it('still reads a nested jar once when it is listed by two different parents', async () => {
+    const shared = simpleMod('shared', '1')
+    const b = simpleMod('bbb', '1', {}, [{ path: 'META-INF/jars/s.jar', jar: shared }])
+    const c = simpleMod('ccc', '1', {}, [{ path: 'META-INF/jars/s.jar', jar: shared }])
+    const read = await readModJarFromBuffer(simpleMod('aaa', '1', {}, [{ path: 'META-INF/jars/b.jar', jar: b }, { path: 'META-INF/jars/c.jar', jar: c }]))
+    expect(read.ok && read.info.nested.map((n) => n.nested.map((m) => m.metadata?.id))).toEqual([['shared'], ['shared']])
   })
 
   it("doesn't look inside server-only mods", async () => {

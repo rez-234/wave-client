@@ -75,7 +75,7 @@ function failure(error: unknown): ModReadResult {
 
 async function readTopLevel(zip: ZipReader): Promise<ModJarInfo> {
   const budget: Budget = { inflated: LIMITS.inflated, nestedJars: LIMITS.nestedJars, seen: new Map() }
-  const info = await readMod(zip, budget)
+  const info = await readMod(zip, budget, new Set())
 
   if (info) {
     // The icon is only worth showing if it is there (schema 0 always names assets/<id>/icon.png).
@@ -96,8 +96,12 @@ function nonFabricKind(zip: ZipReader): NonFabricKind {
   return 'unknown'
 }
 
-/** A jar's mod and its nested mods; null when it has no fabric.mod.json. */
-async function readMod(zip: ZipReader, budget: Budget): Promise<ModJarInfo | null> {
+/**
+ * A jar's mod and its nested mods; null when it has no fabric.mod.json. `ancestors` holds the
+ * hashes of the nested jars this one is inside: a jar that contains itself is the same mod again
+ * (Fabric links it to the one already found), so it is skipped instead of waited on.
+ */
+async function readMod(zip: ZipReader, budget: Budget, ancestors: ReadonlySet<string>): Promise<ModJarInfo | null> {
   const modJson = zip.entry('fabric.mod.json')
 
   if (!modJson) {
@@ -126,10 +130,16 @@ async function readMod(zip: ZipReader, budget: Budget): Promise<ModJarInfo | nul
 
     const bytes = await readCounted(zip, path, LIMITS.nestedJar, budget)
     const hash = createHash('sha1').update(bytes).digest('hex')
+
+    // Still being read further up this chain: waiting for it would never end.
+    if (ancestors.has(hash)) {
+      continue
+    }
+
     let pending = budget.seen.get(hash)
 
     if (!pending) {
-      pending = readNested(path, bytes, budget)
+      pending = readNested(path, bytes, budget, new Set([...ancestors, hash]))
       budget.seen.set(hash, pending)
     }
 
@@ -144,7 +154,7 @@ async function readMod(zip: ZipReader, budget: Budget): Promise<ModJarInfo | nul
 }
 
 /** A jar inside a jar: Fabric streams it with ZipInputStream. */
-async function readNested(path: string, bytes: Buffer, budget: Budget): Promise<ModJarInfo | null> {
+async function readNested(path: string, bytes: Buffer, budget: Budget, ancestors: ReadonlySet<string>): Promise<ModJarInfo | null> {
   let zip: ZipReader
 
   try {
@@ -160,7 +170,7 @@ async function readNested(path: string, bytes: Buffer, budget: Budget): Promise<
   }
 
   try {
-    return await readMod(zip, budget)
+    return await readMod(zip, budget, ancestors)
   } catch (error) {
     throw nestedError(path, error)
   }
