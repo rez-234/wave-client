@@ -117,3 +117,8 @@ export function crashTitle(state: Pick<GameState, 'profile'>): string {
 export function failedTitle(state: Pick<GameState, 'profile'>): string {
   return state.profile ? `${state.profile.name} couldn't start` : "Couldn't start Minecraft"
 }
+
+/** "Play again" relaunches what Play launches now: name it when that's another profile than the one that just ended. */
+export function playAgainLabel(ended: GameState['profile'], selected: { id: string; name: string } | null): string {
+  return ended && selected && ended.id !== selected.id ? `Play ${selected.name}` : 'Play again'
+}

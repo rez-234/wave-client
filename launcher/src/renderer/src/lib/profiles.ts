@@ -112,3 +112,21 @@ export function duplicateName(name: string, profiles: readonly ProfileView[]): s
 export function trashName(platform: string): string {
   return platform === 'win32' ? 'Recycle Bin' : 'Trash'
 }
+
+/** The name the New profile dialog suggests: "New profile", then "New profile 2" and so on. */
+export function newProfileName(profiles: readonly ProfileView[]): string {
+  const taken = new Set(profiles.map((profile) => profile.name.toLocaleLowerCase()))
+
+  for (let n = 1; ; n++) {
+    const candidate = n === 1 ? 'New profile' : `New profile ${n}`
+
+    if (!taken.has(candidate.toLocaleLowerCase())) {
+      return candidate
+    }
+  }
+}
+
+/** Why "Use for Play" can't be pressed right now, or null when it can. */
+export function selectBlocker(profile: ProfileView, busy: boolean): string | null {
+  return !profile.selected && busy ? 'You can switch profiles when Minecraft closes.' : null
+}

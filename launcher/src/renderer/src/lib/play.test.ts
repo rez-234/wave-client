@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { AccountView, CrashSummary, ModView } from '@shared/ipc'
 
-import { crashDetailsText, crashTitle, exitNote, failedTitle, matchSuspects, modProblemsTitle, playButtonModel, suspectName } from './play'
+import { crashDetailsText, crashTitle, playAgainLabel, exitNote, failedTitle, matchSuspects, modProblemsTitle, playButtonModel, suspectName } from './play'
 
 const ok: AccountView = { id: 'a'.repeat(32), name: 'Steve', selected: true, status: 'ok' }
 const expired: AccountView = { ...ok, status: 'expired' }
@@ -144,5 +144,13 @@ describe('card titles', () => {
     expect(crashTitle({})).toBe('Minecraft crashed')
     expect(failedTitle({ profile: { id: 'pvp', name: 'PvP' } })).toBe("PvP couldn't start")
     expect(failedTitle({})).toBe("Couldn't start Minecraft")
+  })
+})
+
+describe('playAgainLabel', () => {
+  it('names the profile when another one is selected now', () => {
+    expect(playAgainLabel({ id: 'pvp', name: 'PvP' }, { id: 'pvp', name: 'PvP' })).toBe('Play again')
+    expect(playAgainLabel({ id: 'pvp', name: 'PvP' }, { id: 'survival', name: 'Survival' })).toBe('Play Survival')
+    expect(playAgainLabel(undefined, { id: 'survival', name: 'Survival' })).toBe('Play again')
   })
 })

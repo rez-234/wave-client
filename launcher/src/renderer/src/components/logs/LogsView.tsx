@@ -4,7 +4,7 @@ import type { LogLine } from '@shared/ipc'
 
 import { useClipboard } from '../../hooks/useClipboard'
 import { formatClock } from '../../lib/format'
-import { LEVEL_FILTERS, MAX_RENDERED_LINES, filterLogLines, formatLogText, isLevelFilter, startsLaunch, visibleWindow, type LevelFilter } from '../../lib/logs'
+import { LEVEL_FILTERS, MAX_RENDERED_LINES, filterLogLines, formatLogText, isLevelFilter, launchLabel, startsLaunch, visibleWindow, type LevelFilter } from '../../lib/logs'
 import { Button } from '../ui/Button'
 import { Icon } from '../ui/Icon'
 import { LogRow } from './LogRow'
@@ -178,7 +178,7 @@ export function LogsView({ lines, onExport, onOpenFolder, report }: LogsViewProp
                 <Fragment key={line.seq}>
                   {startsLaunch(line, view.lines[i - 1]) && (
                     <li className="log-launch" role="separator">
-                      Launch {line.session} · {formatClock(line.time)}
+                      {launchLabel(line)} · {formatClock(line.time)}
                     </li>
                   )}
                   <LogRow line={line} />

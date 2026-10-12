@@ -23,7 +23,7 @@ export interface LauncherDataApi extends LauncherData {
   retry: () => void
   /** Replaces the settings with the ones the main process returned (they are authoritative). */
   applySettings: (settings: LauncherSettings) => void
-  /** Puts a profile the main process returned (after a change) into the list right away. */
+  /** Puts a profile the main process returned (after a change, or a new one) into the list right away; the next list event replaces it. */
   applyProfile: (profile: ProfileView) => void
 }
 
@@ -143,7 +143,7 @@ export function useLauncherData(report: (error: unknown) => void): LauncherDataA
   }, [])
 
   const applyProfile = useCallback((profile: ProfileView) => {
-    setProfiles((current) => current.map((item) => (item.id === profile.id ? profile : item)))
+    setProfiles((current) => (current.some((item) => item.id === profile.id) ? current.map((item) => (item.id === profile.id ? profile : item)) : [...current, profile]))
   }, [])
 
   return { info, infoError, accounts, accountsLoaded, settings, settingsLoaded, profiles, profilesLoaded, game, logs, retry, applySettings, applyProfile }

@@ -238,3 +238,94 @@ export function addResultToast(result: Pick<AddModsResult, 'added' | 'skipped'>,
 
   return { tone: skipped.length > 0 ? 'warn' : 'success', title, lines }
 }
+
+/** "Mod Menu and 2 others need Cloth Config. Turn it off anyway?", or null when nothing needs it. */
+export function turnOffQuestion(mod: Pick<ModView, 'name' | 'neededBy'>): string | null {
+  return mod.neededBy.length > 0 ? `${neededByText(mod.name, mod.neededBy)} Turn it off anyway?` : null
+}
+
+/** The most rounds "Turn them off and play" runs: turning a mod off can break mods that need it. */
+const TURN_OFF_ROUNDS = 5
+
+/**
+ * Turns off every turned-on mod with an error, then again for mods that broke because something
+ * they need is now off, until nothing is left (or a few rounds pass). Returns the last report and
+ * the names of the mods it turned off. Problems about the profile itself can't be fixed this way;
+ * the next launch says so.
+ */
+export async function turnOffModsWithErrors(
+  start: ModsReport,
+  setEnabled: (key: string, enabled: boolean) => Promise<ModsReport>
+): Promise<{ report: ModsReport; turnedOff: string[] }> {
+  let report = start
+  const turnedOff: string[] = []
+
+  for (let round = 0; round < TURN_OFF_ROUNDS; round++) {
+    const targets = modsToTurnOff(report)
+
+    if (targets.length === 0) {
+      break
+    }
+
+    for (const mod of targets) {
+      report = await setEnabled(mod.key, false)
+      turnedOff.push(mod.name)
+    }
+  }
+
+  return { report, turnedOff }
+}
+
+/** What a row says about its state, besides its problems: null for a mod that's on and loads. */
+export function modStateText(mod: Pick<ModView, 'enabled' | 'loads'>): string | null {
+  if (!mod.enabled) {
+    return 'Turned off'
+  }
+
+  return mod.loads ? null : "Won't load"
+}
+
+/** What the mods tab says about the profile's mods folder when it isn't a normal folder. */
+export function folderNote(folder: ModsReport['folder']): { tone: 'info' | 'danger'; text: string } | null {
+  switch (folder) {
+    case 'missing':
+      return { tone: 'info', text: "This profile doesn't have a mods folder yet. Add mods and it's created for you." }
+    case 'not-a-folder':
+      return { tone: 'danger', text: 'There is a file named "mods" where the mods folder should be. Minecraft won\'t start until you move or rename it.' }
+    case 'unreadable':
+      return { tone: 'danger', text: "The mods folder can't be read. Check that your user account can open it, then try again." }
+    default:
+      return null
+  }
+}
+
+/** The label of the Problems filter chip: "Problems (3)". */
+export function problemsChipLabel(mods: readonly ModView[]): string {
+  return `Problems (${problemModCount(mods)})`
+}
+
+/** How many turned-on mods with errors a report has (what the Play page's card counts). */
+export function modsWithErrors(report: ModsReport): number {
+  return report.mods.filter((mod) => mod.enabled && hasError(mod)).length
+}
+
+export interface BlockingSummary {
+  /** Turned-on mods with errors, plus problems with the profile itself. */
+  count: number
+  /** The first few, for the Play page's card. */
+  mods: Array<{ key: string; name: string; message: string }>
+}
+
+/** What stops a profile from starting, the way the Play page lists it: profile problems first, then mods by name. */
+export function blockingSummary(report: ModsReport, limit = 3): BlockingSummary {
+  const profile = report.profileProblems
+    .filter((problem) => problem.severity === 'error')
+    .map((problem, i) => ({ key: `profile-${i}`, name: 'This profile', message: problem.message }))
+  const mods = modsToTurnOff(report).map((mod) => ({
+    key: mod.key,
+    name: mod.name,
+    message: mod.problems.find((problem) => problem.severity === 'error')?.message ?? ''
+  }))
+  const all = [...profile, ...mods]
+  return { count: all.length, mods: all.slice(0, limit) }
+}

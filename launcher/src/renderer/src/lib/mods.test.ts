@@ -4,7 +4,14 @@ import type { AddModsResult, ModProblem, ModView, ModsReport } from '@shared/ipc
 
 import {
   addResultToast,
+  blockingSummary,
   compareModVersions,
+  folderNote,
+  modStateText,
+  modsWithErrors,
+  problemsChipLabel,
+  turnOffModsWithErrors,
+  turnOffQuestion,
   matchesModQuery,
   modrinthSearchUrl,
   modsSummary,
@@ -212,5 +219,71 @@ describe('add result toast', () => {
 
   it('says when the change waits for the next launch', () => {
     expect(addResultToast({ added: [added('Lithium', '0.15.0')], skipped: [] }, 'PvP', true)?.lines).toEqual(['Takes effect next time you play.'])
+  })
+})
+
+describe('turning mods off', () => {
+  it('asks before turning off a mod others need', () => {
+    expect(turnOffQuestion({ name: 'Cloth Config', neededBy: ['Mod Menu', 'Iris', 'Sodium'] })).toBe('Mod Menu and 2 others need Cloth Config. Turn it off anyway?')
+    expect(turnOffQuestion({ name: 'Cloth Config', neededBy: [] })).toBeNull()
+  })
+
+  it('turns off mods with errors, then the ones that break because of it', async () => {
+    // b needs a; c is broken. Turning c off breaks nothing; a has an error and once it's off, b does.
+    let mods = [mod('a.jar', { problems: [error] }), mod('b.jar'), mod('c.jar', { problems: [error] }), mod('d.jar', { problems: [warning] })]
+    const calls: string[] = []
+    const setEnabled = async (key: string, enabled: boolean): Promise<ModsReport> => {
+      calls.push(`${key}:${enabled}`)
+      mods = mods.map((m) => (m.key === key ? { ...m, enabled, problems: [] } : m))
+      if (key === 'a.jar') mods = mods.map((m) => (m.key === 'b.jar' ? { ...m, problems: [error] } : m))
+      return report(mods)
+    }
+    const result = await turnOffModsWithErrors(report(mods), setEnabled)
+    expect(calls).toEqual(['a.jar:false', 'c.jar:false', 'b.jar:false'])
+    expect(result.turnedOff).toEqual(['a', 'c', 'b'])
+    expect(modsWithErrors(result.report)).toBe(0)
+  })
+
+  it('stops after a few rounds when turning off never settles', async () => {
+    let n = 0
+    const setEnabled = async (): Promise<ModsReport> => report([mod(`m${n++}.jar`, { problems: [error] })])
+    const result = await turnOffModsWithErrors(report([mod('m.jar', { problems: [error] })]), setEnabled)
+    expect(result.turnedOff).toHaveLength(5)
+  })
+})
+
+describe('row and folder states', () => {
+  it('says when a mod is off or will not load', () => {
+    expect(modStateText({ enabled: false, loads: false })).toBe('Turned off')
+    expect(modStateText({ enabled: true, loads: false })).toBe("Won't load")
+    expect(modStateText({ enabled: true, loads: true })).toBeNull()
+  })
+
+  it('explains folders that are not normal', () => {
+    expect(folderNote('ok')).toBeNull()
+    expect(folderNote('missing')?.tone).toBe('info')
+    expect(folderNote('not-a-folder')?.tone).toBe('danger')
+    expect(folderNote('unreadable')?.tone).toBe('danger')
+  })
+
+  it('counts problems for the chip and errors for the Play card', () => {
+    const mods = [mod('a.jar', { problems: [error] }), mod('b.jar', { problems: [warning] }), mod('c.jar', { enabled: false, problems: [error] }), mod('d.jar')]
+    expect(problemsChipLabel(mods)).toBe('Problems (3)')
+    expect(modsWithErrors(report(mods))).toBe(1)
+  })
+})
+
+describe('blockingSummary', () => {
+  it('lists profile problems, then turned-on mods with errors, by name', () => {
+    const r = {
+      ...report([mod('b.jar', { problems: [error] }), mod('a.jar', { problems: [warning, error] }), mod('c.jar', { enabled: false, problems: [error] })]),
+      profileProblems: [{ severity: 'error' as const, code: 'unreadable' as const, message: 'Bad overrides file.' }]
+    }
+    const summary = blockingSummary(r, 2)
+    expect(summary.count).toBe(3)
+    expect(summary.mods).toEqual([
+      { key: 'profile-0', name: 'This profile', message: 'Bad overrides file.' },
+      { key: 'a.jar', name: 'a', message: error.message }
+    ])
   })
 })

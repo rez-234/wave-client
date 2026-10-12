@@ -4,6 +4,8 @@ import { Button } from '../ui/Button'
 import { Icon } from '../ui/Icon'
 
 interface FailedCardProps {
+  /** "PvP couldn't start". */
+  title: string
   error: string | undefined
   onTryAgain: () => void
   onRepair: () => void
@@ -12,13 +14,13 @@ interface FailedCardProps {
 }
 
 /** Starting the game failed before it ran: the reason, and two ways forward. */
-export function FailedCard({ error, onTryAgain, onRepair, onShowLogs, disabled }: FailedCardProps): JSX.Element {
+export function FailedCard({ title, error, onTryAgain, onRepair, onShowLogs, disabled }: FailedCardProps): JSX.Element {
   return (
     <section className="card status-card status-card--danger" role="alert" aria-labelledby="failed-title">
       <div className="status-card__head">
         <h2 id="failed-title" className="status-card__title status-card__title--danger">
           <Icon name="alert" size={18} />
-          Couldn't start Minecraft
+          {title}
         </h2>
       </div>
       <p className="status-card__reason">{error?.trim() || 'Something went wrong while starting Minecraft. The log has the details.'}</p>

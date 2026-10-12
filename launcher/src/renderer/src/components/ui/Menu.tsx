@@ -32,7 +32,7 @@ export interface MenuTriggerProps {
 }
 
 interface MenuProps {
-  /** Renders the button that opens the menu. */
+  /** Renders the button that opens the menu (its accessible name should say what the menu is for). */
   trigger: (props: MenuTriggerProps) => ReactNode
   items: readonly MenuEntry[]
   /** The menu's accessible name. */
@@ -163,8 +163,8 @@ export function Menu({ trigger, items, label, align = 'start', className }: Menu
               <button
                 key={entry.key}
                 type="button"
-                role={radio ? 'menuitemradio' : 'menuitem'}
-                aria-checked={radio ? entry.checked === true : undefined}
+                role={entry.checked !== undefined ? 'menuitemradio' : 'menuitem'}
+                aria-checked={entry.checked}
                 aria-disabled={entry.disabled || undefined}
                 tabIndex={-1}
                 className={['menu-item', 'menu__item', entry.danger ? 'menu-item--danger' : '', entry.disabled ? 'menu__item--disabled' : '', entry.detail ? 'menu__item--two-line' : '']
@@ -177,7 +177,7 @@ export function Menu({ trigger, items, label, align = 'start', className }: Menu
                   <span className="menu__label">{entry.label}</span>
                   {entry.detail && <span className="menu__detail">{entry.detail}</span>}
                 </span>
-                {radio && <Icon name="check" size={16} className={`menu__check${entry.checked ? '' : ' menu__check--hidden'}`} />}
+                {radio && entry.checked !== undefined && <Icon name="check" size={16} className={`menu__check${entry.checked ? '' : ' menu__check--hidden'}`} />}
               </button>
             ) : (
               <div key={entry.key} className="popover__divider" role="separator" />

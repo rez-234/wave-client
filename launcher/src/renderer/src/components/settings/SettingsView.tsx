@@ -10,8 +10,6 @@ import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { Icon } from '../ui/Icon'
 import { SegmentedControl } from '../ui/SegmentedControl'
 import { JavaSetting } from './JavaSetting'
-import { JvmArgsSetting } from './JvmArgsSetting'
-import { MemorySetting } from './MemorySetting'
 import { SettingRow, SettingsSection } from './SettingRow'
 import { WindowSettings } from './WindowSettings'
 
@@ -27,6 +25,10 @@ interface SettingsViewProps {
   onOpenFolder: (kind: FolderKind) => void
   onAddAccount: () => void
   onSignOut: (account: AccountView) => void
+  /** Opens the Settings tab of the profile Play launches, where memory and JVM arguments are. */
+  onShowProfileSettings: () => void
+  /** The profile Play launches, for the folder buttons and the per-profile row. */
+  profileName: string | null
   report: (error: unknown) => void
 }
 
@@ -56,6 +58,8 @@ export function SettingsView({
   onOpenFolder,
   onAddAccount,
   onSignOut,
+  onShowProfileSettings,
+  profileName,
   report
 }: SettingsViewProps): JSX.Element {
   const [saved, flashSaved] = useFlash(1800)
@@ -105,7 +109,6 @@ export function SettingsView({
 
         <div className="settings__body">
           <SettingsSection id="game" title="Game">
-            <MemorySetting memoryMb={settings.memoryMb} totalMemoryMb={info.totalMemoryMb} limits={info.memoryRangeMb} disabled={disabled} onSave={(memoryMb) => save({ memoryMb })} />
             <JavaSetting
               javaPath={settings.javaPath}
               disabled={disabled}
@@ -114,7 +117,15 @@ export function SettingsView({
               onPicked={() => save({})}
               onReset={() => save({ javaPath: null })}
             />
-            <JvmArgsSetting jvmArgs={settings.jvmArgs} disabled={disabled} onSave={(jvmArgs) => save({ jvmArgs })} />
+            <SettingRow
+              id="per-profile"
+              label="Memory and Java arguments are set per profile"
+              description={profileName ? `Play uses ${profileName}. Each profile has its own memory, Java arguments and Minecraft version.` : 'Each profile has its own memory, Java arguments and Minecraft version.'}
+            >
+              <Button variant="secondary" size="sm" trailingIcon="chevronRight" onClick={onShowProfileSettings}>
+                Profile settings
+              </Button>
+            </SettingRow>
           </SettingsSection>
 
           <SettingsSection id="window" title="Game window">

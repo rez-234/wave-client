@@ -7,6 +7,8 @@ import {
   duplicateName,
   lastPlayedText,
   modCountText,
+  newProfileName,
+  selectBlocker,
   pickerLabel,
   profileDetail,
   profileNameProblem,
@@ -119,5 +121,18 @@ describe('names', () => {
     const copy = duplicateName(long, [])
     expect(copy.length).toBeLessThanOrEqual(40)
     expect(copy.endsWith(' (copy)')).toBe(true)
+  })
+})
+
+describe('new profiles and selection', () => {
+  it('suggests a free name', () => {
+    expect(newProfileName([profile('a')])).toBe('New profile')
+    expect(newProfileName([profile('a', { name: 'new PROFILE' }), profile('b', { name: 'New profile 2' })])).toBe('New profile 3')
+  })
+
+  it('explains why Use for Play is unavailable while the game runs', () => {
+    expect(selectBlocker(profile('a'), false)).toBeNull()
+    expect(selectBlocker(profile('a'), true)).toBe('You can switch profiles when Minecraft closes.')
+    expect(selectBlocker(profile('a', { selected: true }), true)).toBeNull()
   })
 })
