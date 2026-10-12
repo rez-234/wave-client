@@ -1,3 +1,4 @@
+import { appendFileSync, mkdirSync } from 'node:fs'
 import { appendFile, mkdir, readFile, readdir, stat } from 'node:fs/promises'
 import { totalmem, release } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -435,6 +436,11 @@ async function findBundledModJar(): Promise<string> {
     throw new Error(app.isPackaged ? 'Wave Client is missing its mod file. Please reinstall.' : `No mod jar in ${dir}. Run ./gradlew build in mod/ first.`)
   }
 
+  // An installer ships exactly one; more would mean a stale jar was packaged with it.
+  if (app.isPackaged && names.length > 1) {
+    throw new Error('Wave Client has more than one mod file. Please reinstall.')
+  }
+
   const withTimes = await Promise.all(names.map(async (name) => ({ name, time: (await stat(join(dir, name))).mtimeMs })))
   withTimes.sort((a, b) => b.time - a.time)
   return join(dir, withTimes[0]!.name)
@@ -450,6 +456,19 @@ async function readLegacySettings(file: string): Promise<LegacySettings> {
     }
   } catch {
     return {}
+  }
+}
+
+/** The smoke test's verdict, written before exiting (log() writes later; a packaged app has no console). */
+function smokeResult(message: string): void {
+  const line = `[${new Date().toISOString()}] ${message}\n`
+  process.stdout.write(line)
+
+  try {
+    mkdirSync(join(root, 'logs'), { recursive: true })
+    appendFileSync(logFile, line)
+  } catch {
+    // Nothing more to do: stdout has it.
   }
 }
 
@@ -506,10 +525,10 @@ async function runSmokeTest(): Promise<void> {
       // The dev server's page allows its own websocket and requests.
       result.fetchBlocked === !rendererUrl &&
       result.root > 0
-    log(`SMOKE ${ok ? 'OK' : 'FAILED'} ${JSON.stringify(result)}`)
+    smokeResult(`SMOKE ${ok ? 'OK' : 'FAILED'} ${JSON.stringify(result)}`)
     app.exit(ok ? 0 : 1)
   } catch (error) {
-    log(`SMOKE FAILED ${String(error)}`)
+    smokeResult(`SMOKE FAILED ${String(error)}`)
     app.exit(1)
   }
 }

@@ -310,8 +310,10 @@ initializes.
 - electron-builder NSIS target produces `WaveClient-Setup-<version>.exe`.
 - Per-user install by default, so no admin prompt. Location is `%LOCALAPPDATA%\Programs\Wave Client`.
 - Creates Start menu and desktop shortcuts and registers an uninstaller in "Apps & features".
-  Uninstalling asks whether to also remove the game data in `%APPDATA%\WaveClient` (default No);
-  updates (a newer installer over an older one) and silent uninstalls never remove it.
+  Uninstalling a per-user install asks whether to also remove the game data in
+  `%APPDATA%\WaveClient` (default No); updates (a newer installer over an older one), silent
+  uninstalls and all-users installs (whose uninstaller may run as an administrator account)
+  never remove it.
 - The mod jar is built first and bundled as an extra resource (`resources/mod/`). The launcher
   copies it into `client/` when it prepares a launch, so an update's new jar is used at once.
 - The app contains only electron-vite's output in an asar; there are no runtime npm dependencies.

@@ -29,7 +29,8 @@ PowerShell).
 
 To update, run a newer installer: your profiles, worlds and accounts stay. To uninstall, use
 **Settings > Apps > Installed apps** (or Apps & features). It asks whether to also remove your
-game data in `%APPDATA%\WaveClient`; the default is to keep it.
+game data in `%APPDATA%\WaveClient`; the default is to keep it. The release also has a
+`.sha256` file with the installer's hash.
 
 ## Building the mod
 
@@ -88,7 +89,7 @@ Building the Windows installer (on Windows; `mod/build/libs` must hold the built
 is bundled):
 
 ```sh
-cd mod && ./gradlew build        # gradlew.bat on Windows
+cd mod && ./gradlew clean build  # gradlew.bat on Windows; clean, so only the current jar is bundled
 cd ../launcher
 npm run build
 npx electron-builder --win       # release/WaveClient-Setup-<version>.exe and release/win-unpacked/

@@ -31,7 +31,12 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
       - name: Build the mod
         working-directory: mod
-        run: ./gradlew.bat build -x test --console=plain
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          ./gradlew.bat build -x test --console=plain
+          # The installer bundles exactly one mod jar.
+          $jars = @(Get-ChildItem build/libs/waveclient-*.jar | Where-Object Name -notmatch '-(sources|dev)\.jar$')
+          if ($jars.Count -ne 1) { throw "Expected one mod jar, found: $($jars.Name -join ', ')" }
       - name: Set up Node 22
         uses: actions/setup-node@v5
         with:
@@ -50,6 +55,8 @@ jobs:
       - name: Build the installer
         working-directory: launcher
         run: |
+          # Stop at the first command that fails, not just the last one.
+          $PSNativeCommandUseErrorActionPreference = $true
           npm run build
           npx electron-builder --win --publish never
           Get-ChildItem release -File | Format-Table Name, Length
@@ -68,7 +75,6 @@ jobs:
         working-directory: launcher
         run: |
           $setup = (Get-ChildItem release\WaveClient-Setup-*.exe).FullName
-          $installDir = "$env:LOCALAPPDATA\Programs\Wave Client"
           $data = "$env:APPDATA\WaveClient"
           $startMenu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Wave Client.lnk"
           $desktop = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Wave Client.lnk'
@@ -78,12 +84,16 @@ jobs:
           # Silent install for the current user: no admin rights involved.
           $install = Start-Process -FilePath $setup -ArgumentList '/S' -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw "Setup exited with $($install.ExitCode)" }
-          foreach ($path in "$installDir\WaveClient.exe", "$installDir\resources\app.asar", $startMenu, $desktop) {
-            if (-not (Test-Path $path)) { throw "Missing after install: $path" }
-          }
           $entry = Entry
           if (-not $entry) { throw 'No Apps & features entry' }
-          $entry | Format-List DisplayName, DisplayVersion, Publisher, InstallLocation, UninstallString
+          $entry | Format-List DisplayName, DisplayVersion, Publisher, InstallLocation, UninstallString, QuietUninstallString
+          # Per user, the folder is under the user's own programs folder (normally %LOCALAPPDATA%\Programs).
+          $installDir = $entry.InstallLocation.TrimEnd('\')
+          if ($installDir -notlike "$env:LOCALAPPDATA\*") { throw "Not installed for the current user: $installDir" }
+          if ((Split-Path $installDir -Leaf) -ne 'Wave Client') { throw "Unexpected install folder name: $installDir" }
+          foreach ($path in "$installDir\WaveClient.exe", "$installDir\resources\app.asar", "$installDir\resources\mod", $startMenu, $desktop) {
+            if (-not (Test-Path $path)) { throw "Missing after install: $path" }
+          }
 
           # The installed app runs, with its data in the real place (%APPDATA%\WaveClient).
           Remove-Item Env:WAVE_LAUNCHER_HOME -ErrorAction SilentlyContinue
@@ -120,12 +130,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $setup = (Get-ChildItem release\WaveClient-Setup-*.exe).FullName
-          $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
-          $notes = "Windows installer for Wave Client $env:GITHUB_REF_NAME.`n`nSHA-256: $hash`n`nThe installer isn't code-signed yet, so Windows SmartScreen may warn the first time: choose More info, then Run anyway."
-          gh release view $env:GITHUB_REF_NAME 2>$null
+          $setup = Get-Item release\WaveClient-Setup-*.exe
+          $hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLower()
+          # The hash also goes in a file next to the installer, replaced with it on a re-run.
+          $sums = "release\$($setup.Name).sha256"
+          "$hash  $($setup.Name)" | Set-Content -NoNewline -Encoding ascii $sums
+          $notes = "Windows installer for Wave Client $env:GITHUB_REF_NAME.`n`nSHA-256 of $($setup.Name): $hash`n`nThe installer isn't code-signed yet, so Windows SmartScreen may warn the first time: choose More info, then Run anyway."
+          gh release view $env:GITHUB_REF_NAME *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $env:GITHUB_REF_NAME $setup --clobber
+            # A re-run: the rebuilt installer isn't byte-identical, so the notes get its new hash too.
+            gh release upload $env:GITHUB_REF_NAME $setup.FullName $sums --clobber
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            gh release edit $env:GITHUB_REF_NAME --notes $notes
           } else {
-            gh release create $env:GITHUB_REF_NAME $setup --title "Wave Client $env:GITHUB_REF_NAME" --notes $notes
+            gh release create $env:GITHUB_REF_NAME $setup.FullName $sums --title "Wave Client $env:GITHUB_REF_NAME" --notes $notes
           }
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
