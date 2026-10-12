@@ -115,6 +115,7 @@ export interface CrashSummary {
 /** Mods that stopped a launch (GameState.modProblems): Play again with ignoreModProblems to go ahead. */
 export interface BlockingModProblems {
   profileId: string
+  /** How many mods have errors (a broken mods folder counts as one). */
   errors: number
   /** The first few, for the card. */
   mods: Array<{ key: string; name: string; message: string }>
