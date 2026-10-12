@@ -7,12 +7,17 @@ on:
       - 'shared/**'
       - 'mod/**'
       - '.github/workflows/launcher.yml'
+      - '.github/workflows/windows-installer.yml'
   pull_request:
     paths:
       - 'launcher/**'
       - 'shared/**'
       - 'mod/**'
       - '.github/workflows/launcher.yml'
+      - '.github/workflows/windows-installer.yml'
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -131,3 +136,6 @@ jobs:
             ${{ runner.temp }}/wave-e2e/instances/default/logs/
             ${{ runner.temp }}/wave-e2e/instances/default/crash-reports/
           if-no-files-found: ignore
+
+  windows-installer:
+    uses: ./.github/workflows/windows-installer.yml

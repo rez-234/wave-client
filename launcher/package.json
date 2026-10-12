@@ -3,6 +3,13 @@
   "productName": "Wave Client",
   "version": "0.1.0",
   "description": "Launcher for Wave Client, a PvP and quality-of-life Minecraft client.",
+  "author": "Wave Client contributors",
+  "homepage": "https://github.com/rez-234/wave-client",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rez-234/wave-client.git",
+    "directory": "launcher"
+  },
   "private": true,
   "license": "UNLICENSED",
   "main": "./out/main/index.js",
@@ -27,6 +34,7 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "5.2.0",
     "electron": "44.5.1",
+    "electron-builder": "26.15.3",
     "electron-vite": "5.0.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",

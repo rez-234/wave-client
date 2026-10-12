@@ -31,3 +31,8 @@ hs_err_*.log
 replay_*.log
 *.hprof
 *.jfr
+
+# Installer output
+release/
+# Installer resources (icon, NSIS script), not build output
+!launcher/build/

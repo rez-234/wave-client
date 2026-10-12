@@ -10,8 +10,26 @@ for the full design.
 | Folder | Contents |
 |---|---|
 | `mod/` | Fabric client mod (Java 21, Gradle, Fabric Loom, Mojang mappings) |
-| `launcher/` | Electron + TypeScript + React launcher (Windows installer comes in step 8) |
+| `launcher/` | Electron + TypeScript + React launcher and its Windows installer |
 | `docs/` | Architecture and decisions |
+
+## Installing on Windows
+
+Download `WaveClient-Setup-<version>.exe` from the repository's Releases page (or from the
+`WaveClient-Setup` artifact of a CI run) and run it. It installs for your Windows user only, so
+it doesn't ask for administrator rights, into `%LOCALAPPDATA%\Programs\Wave Client` (you can
+pick another folder), and adds Wave Client to the Start menu and the desktop. Open Wave Client,
+sign in with your Microsoft account and press Play: the first launch downloads Minecraft,
+Fabric and Java from Mojang's and Fabric's servers.
+
+The installer isn't code-signed yet, so Windows SmartScreen may say it "protected your PC" the
+first time. Choose **More info**, then **Run anyway**. The release notes list the installer's
+SHA-256 if you want to check the file (`Get-FileHash WaveClient-Setup-<version>.exe` in
+PowerShell).
+
+To update, run a newer installer: your profiles, worlds and accounts stay. To uninstall, use
+**Settings > Apps > Installed apps** (or Apps & features). It asks whether to also remove your
+game data in `%APPDATA%\WaveClient`; the default is to keep it.
 
 ## Building the mod
 
@@ -65,6 +83,23 @@ WAVE_SMOKE_TEST=1 WAVE_LAUNCHER_HOME=/tmp/wave-smoke npm run smoke
 # loaded. Needs the mod jar and a display (on a Linux server: xvfb-run -a npm run test:e2e).
 WAVE_MOD_JAR=../mod/build/libs/waveclient-<version>.jar npm run test:e2e
 ```
+
+Building the Windows installer (on Windows; `mod/build/libs` must hold the built mod jar, which
+is bundled):
+
+```sh
+cd mod && ./gradlew build        # gradlew.bat on Windows
+cd ../launcher
+npm run build
+npx electron-builder --win       # release/WaveClient-Setup-<version>.exe and release/win-unpacked/
+```
+
+CI builds the installer on a Windows runner for every change and tests it there: the packaged
+app's smoke test, a silent install (files, shortcuts, Apps & features entry), the installed app
+starting, and a silent uninstall that removes the program but keeps the game data
+(`.github/workflows/windows-installer.yml`). Pushing a tag `v<version>` that matches
+`launcher/package.json` publishes the installer as a GitHub release (`release.yml`). The app icon
+is generated from `launcher/build/icon.svg` with `npx electron scripts/make-icon.mjs`.
 
 On Windows PowerShell, set the variables first, e.g. `$env:WAVE_SMOKE_TEST=1`. Electron
 downloads its own binary the first time it runs (or with `npx install-electron`).

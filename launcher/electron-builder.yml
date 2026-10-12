@@ -1,0 +1,66 @@
+# Windows installer (NSIS). Build from launcher/ after `npm run build` and building the mod:
+#   npx electron-builder --win
+# Output: release/WaveClient-Setup-<version>.exe (see docs/ARCHITECTURE.md, "Installer").
+appId: dev.waveclient.launcher
+productName: Wave Client
+copyright: Copyright © Wave Client contributors
+directories:
+  output: release
+  buildResources: build
+
+# The bundled app: electron-vite's output only (everything is bundled, there are no runtime dependencies).
+files:
+  - out/**
+  - package.json
+asar: true
+
+# Our mod, built by Gradle; the launcher copies it into its client/ folder before each launch.
+# Nothing from Minecraft is bundled: the launcher downloads it from Mojang at first launch.
+extraResources:
+  - from: ../mod/build/libs
+    to: mod
+    filter:
+      - waveclient-*.jar
+      - '!*-sources.jar'
+      - '!*-dev.jar'
+
+# Locked down at packaging time: the app can't be run as plain Node, inspected, or given
+# NODE_OPTIONS, and only loads its own asar, whose integrity is checked.
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false
+  loadBrowserProcessSpecificV8Snapshot: false
+
+win:
+  target:
+    - target: nsis
+      arch: x64
+  icon: build/icon.ico
+  executableName: WaveClient
+  # Unsigned until a code-signing certificate is added (SmartScreen warns on first run).
+  signAndEditExecutable: true
+
+nsis:
+  artifactName: WaveClient-Setup-${version}.${ext}
+  # Assisted installer: "Only for me" is the default (%LOCALAPPDATA%\Programs\Wave Client, no
+  # admin prompt); the folder can be changed.
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Wave Client
+  uninstallDisplayName: Wave Client
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  # Game data (worlds, profiles, accounts) is kept unless the player says otherwise when uninstalling.
+  deleteAppDataOnUninstall: false
+  include: build/installer.nsh
+
+# No auto-update feed yet: new versions are installed by running a newer installer.
+publish: null

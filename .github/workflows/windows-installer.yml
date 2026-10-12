@@ -1,0 +1,131 @@
+name: windows-installer
+
+# Builds the Windows installer and tests it on a real Windows machine: the packaged app starts
+# (fuses on, app from its asar), the installer installs per user with shortcuts and an
+# Apps & features entry, the installed app runs, and uninstalling removes the program but keeps
+# the player's game data. Called by launcher.yml on every change and by release.yml for tags.
+on:
+  workflow_call:
+    inputs:
+      release:
+        description: Attach the installer to the GitHub release for this tag.
+        type: boolean
+        default: false
+
+jobs:
+  installer:
+    runs-on: windows-2025
+    # Permissions come from the caller: read for launcher.yml, write (to publish) for release.yml.
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Build the mod
+        working-directory: mod
+        run: ./gradlew.bat build -x test --console=plain
+      - name: Set up Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: launcher/package-lock.json
+      - name: Install dependencies
+        working-directory: launcher
+        run: npm ci
+      - name: Check the tag matches the launcher version
+        if: inputs.release
+        working-directory: launcher
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          if ("v$version" -ne $env:GITHUB_REF_NAME) { throw "Tag $env:GITHUB_REF_NAME doesn't match launcher/package.json version $version" }
+      - name: Build the installer
+        working-directory: launcher
+        run: |
+          npm run build
+          npx electron-builder --win --publish never
+          Get-ChildItem release -File | Format-Table Name, Length
+          Get-ChildItem release/win-unpacked/resources/mod
+
+      - name: Smoke test the packaged app
+        working-directory: launcher
+        run: |
+          $env:WAVE_SMOKE_TEST = '1'
+          $env:WAVE_LAUNCHER_HOME = "$env:RUNNER_TEMP\wave-smoke"
+          $app = Start-Process -FilePath 'release\win-unpacked\WaveClient.exe' -Wait -PassThru
+          Get-Content "$env:WAVE_LAUNCHER_HOME\logs\launcher.log"
+          if ($app.ExitCode -ne 0) { throw "The packaged app's smoke test failed ($($app.ExitCode))" }
+
+      - name: Install, run, uninstall
+        working-directory: launcher
+        run: |
+          $setup = (Get-ChildItem release\WaveClient-Setup-*.exe).FullName
+          $installDir = "$env:LOCALAPPDATA\Programs\Wave Client"
+          $data = "$env:APPDATA\WaveClient"
+          $startMenu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Wave Client.lnk"
+          $desktop = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Wave Client.lnk'
+          $uninstallKeys = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
+          function Entry { Get-ItemProperty $uninstallKeys -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'Wave Client' }
+
+          # Silent install for the current user: no admin rights involved.
+          $install = Start-Process -FilePath $setup -ArgumentList '/S' -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Setup exited with $($install.ExitCode)" }
+          foreach ($path in "$installDir\WaveClient.exe", "$installDir\resources\app.asar", $startMenu, $desktop) {
+            if (-not (Test-Path $path)) { throw "Missing after install: $path" }
+          }
+          $entry = Entry
+          if (-not $entry) { throw 'No Apps & features entry' }
+          $entry | Format-List DisplayName, DisplayVersion, Publisher, InstallLocation, UninstallString
+
+          # The installed app runs, with its data in the real place (%APPDATA%\WaveClient).
+          Remove-Item Env:WAVE_LAUNCHER_HOME -ErrorAction SilentlyContinue
+          $env:WAVE_SMOKE_TEST = '1'
+          $app = Start-Process -FilePath "$installDir\WaveClient.exe" -Wait -PassThru
+          Get-Content "$data\logs\launcher.log"
+          if ($app.ExitCode -ne 0) { throw "The installed app's smoke test failed ($($app.ExitCode))" }
+          if (-not (Test-Path "$data\profiles.json")) { throw 'The installed app wrote no profiles.json' }
+
+          # Silent uninstall: the program, shortcuts and entry go; the game data stays.
+          $uninstaller = ($entry.QuietUninstallString, $entry.UninstallString | Where-Object { $_ } | Select-Object -First 1)
+          if ($uninstaller -notmatch '/S') { $uninstaller = "$uninstaller /S" }
+          Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', $uninstaller -Wait
+          # The NSIS uninstaller copies itself to a temporary folder and finishes from there.
+          $deadline = (Get-Date).AddSeconds(120)
+          while ((Test-Path "$installDir\WaveClient.exe") -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
+          Start-Sleep -Seconds 3
+          foreach ($path in "$installDir\WaveClient.exe", $startMenu, $desktop) {
+            if (Test-Path $path) { throw "Still there after uninstall: $path" }
+          }
+          if (Entry) { throw 'The Apps & features entry is still there' }
+          if (-not (Test-Path "$data\profiles.json")) { throw 'Uninstalling removed the game data' }
+          Write-Output 'Install, run and uninstall all worked; game data kept.'
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: WaveClient-Setup
+          path: launcher/release/WaveClient-Setup-*.exe
+          if-no-files-found: error
+      - name: Attach to the release
+        if: inputs.release
+        working-directory: launcher
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $setup = (Get-ChildItem release\WaveClient-Setup-*.exe).FullName
+          $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
+          $notes = "Windows installer for Wave Client $env:GITHUB_REF_NAME.`n`nSHA-256: $hash`n`nThe installer isn't code-signed yet, so Windows SmartScreen may warn the first time: choose More info, then Run anyway."
+          gh release view $env:GITHUB_REF_NAME 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:GITHUB_REF_NAME $setup --clobber
+          } else {
+            gh release create $env:GITHUB_REF_NAME $setup --title "Wave Client $env:GITHUB_REF_NAME" --notes $notes
+          }

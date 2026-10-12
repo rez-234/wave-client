@@ -304,14 +304,22 @@ initializes.
 
 ### Installer
 
+`launcher/electron-builder.yml`, `launcher/build/` (icon, `installer.nsh`),
+`.github/workflows/windows-installer.yml` and `release.yml`.
+
 - electron-builder NSIS target produces `WaveClient-Setup-<version>.exe`.
 - Per-user install by default, so no admin prompt. Location is `%LOCALAPPDATA%\Programs\Wave Client`.
 - Creates Start menu and desktop shortcuts and registers an uninstaller in "Apps & features".
-  Uninstalling keeps game data unless the user ticks "Remove game data".
-- The mod jar is built first and bundled as an extra resource. The launcher copies it into
-  `client/` on first run and after updates.
+  Uninstalling asks whether to also remove the game data in `%APPDATA%\WaveClient` (default No);
+  updates (a newer installer over an older one) and silent uninstalls never remove it.
+- The mod jar is built first and bundled as an extra resource (`resources/mod/`). The launcher
+  copies it into `client/` when it prepares a launch, so an update's new jar is used at once.
+- The app contains only electron-vite's output in an asar; there are no runtime npm dependencies.
 - Built by GitHub Actions on a Windows runner and attached as a workflow artifact (and to
-  releases on tags).
+  releases on tags `v<version>`, which must match `launcher/package.json`). The same job tests
+  it: the packaged app's smoke test, then a silent install (files, shortcuts, Apps & features
+  entry), the installed app's smoke test with its data in the real `%APPDATA%\WaveClient`, and a
+  silent uninstall that must remove the program, shortcuts and entry but keep the data.
 - Electron fuses flipped at packaging: `RunAsNode`, `EnableNodeOptionsEnvironmentVariable`,
   `EnableNodeCliInspectArguments` and `GrantFileProtocolExtraPrivileges` off, asar integrity
   validation and `OnlyLoadAppFromAsar` on.
@@ -328,3 +336,5 @@ initializes.
 6. Launcher: auth, downloads, Fabric install, launch
 7. Launcher mod manager and profiles
 8. Windows installer and CI release build
+
+All eight steps are done.

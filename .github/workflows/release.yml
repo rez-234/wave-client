@@ -1,0 +1,16 @@
+name: release
+
+# Pushing a tag like v0.1.0 (matching launcher/package.json) builds and tests the Windows
+# installer and publishes it as a GitHub release.
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  windows:
+    uses: ./.github/workflows/windows-installer.yml
+    permissions:
+      contents: write
+    with:
+      release: true
